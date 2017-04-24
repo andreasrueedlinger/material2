@@ -1,6 +1,4 @@
 import {
-  NgModule,
-  ModuleWithProviders,
   ViewChild,
   Component,
   Input,
@@ -11,24 +9,10 @@ import {
   ElementRef,
   Renderer
 } from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {
-  PortalModule,
-  coerceBooleanProperty
-} from '../core';
-import {MdTabLabel} from './tab-label';
-import {MdTabLabelWrapper} from './tab-label-wrapper';
-import {MdTabNavBar, MdTabLink, MdTabLinkRipple} from './tab-nav-bar/tab-nav-bar';
-import {MdInkBar} from './ink-bar';
+import {coerceBooleanProperty} from '../core';
 import {Observable} from 'rxjs/Observable';
-import 'rxjs/add/operator/map';
-import {MdRippleModule} from '../core/ripple/ripple';
-import {ObserveContentModule} from '../core/observe-content/observe-content';
 import {MdTab} from './tab';
-import {MdTabBody} from './tab-body';
-import {VIEWPORT_RULER_PROVIDER} from '../core/overlay/position/viewport-ruler';
-import {MdTabHeader} from './tab-header';
-import {SCROLL_DISPATCHER_PROVIDER} from '../core/overlay/scroll/scroll-dispatcher';
+import 'rxjs/add/operator/map';
 
 
 /** Used to generate unique ID's for each tab component */
@@ -95,25 +79,16 @@ export class MdTabGroup {
   @Input()
   headerPosition: MdTabHeaderPosition = 'above';
 
-  /** Output to enable support for two-way binding on `selectedIndex`. */
+  /** Output to enable support for two-way binding on `[(selectedIndex)]` */
   @Output() get selectedIndexChange(): Observable<number> {
     return this.selectChange.map(event => event.index);
   }
 
-  private _onFocusChange: EventEmitter<MdTabChangeEvent> = new EventEmitter<MdTabChangeEvent>();
-
   /** Event emitted when focus has changed within a tab group. */
-  @Output() get focusChange(): Observable<MdTabChangeEvent> {
-    return this._onFocusChange.asObservable();
-  }
-
-  private _onSelectChange: EventEmitter<MdTabChangeEvent> =
-      new EventEmitter<MdTabChangeEvent>(true);
+  @Output() focusChange: EventEmitter<MdTabChangeEvent> = new EventEmitter<MdTabChangeEvent>();
 
   /** Event emitted when the tab selection has changed. */
-  @Output() get selectChange(): Observable<MdTabChangeEvent> {
-    return this._onSelectChange.asObservable();
-  }
+  @Output() selectChange: EventEmitter<MdTabChangeEvent> = new EventEmitter<MdTabChangeEvent>(true);
 
   private _groupId: number;
 
@@ -137,7 +112,7 @@ export class MdTabGroup {
     // If there is a change in selected index, emit a change event. Should not trigger if
     // the selected index has not yet been initialized.
     if (this._selectedIndex != this._indexToSelect && this._selectedIndex != null) {
-      this._onSelectChange.emit(this._createChangeEvent(this._indexToSelect));
+      this.selectChange.emit(this._createChangeEvent(this._indexToSelect));
     }
 
     // Setup the position for each tab and optionally setup an origin on the next selected tab.
@@ -163,7 +138,7 @@ export class MdTabGroup {
   }
 
   _focusChanged(index: number) {
-    this._onFocusChange.emit(this._createChangeEvent(index));
+    this.focusChange.emit(this._createChangeEvent(index));
   }
 
   private _createChangeEvent(index: number): MdTabChangeEvent {
@@ -207,23 +182,5 @@ export class MdTabGroup {
   _removeTabBodyWrapperHeight(): void {
     this._tabBodyWrapperHeight = this._tabBodyWrapper.nativeElement.clientHeight;
     this._renderer.setElementStyle(this._tabBodyWrapper.nativeElement, 'height', '');
-  }
-}
-
-@NgModule({
-  imports: [CommonModule, PortalModule, MdRippleModule, ObserveContentModule],
-  // Don't export all components because some are only to be used internally.
-  exports: [MdTabGroup, MdTabLabel, MdTab, MdTabNavBar, MdTabLink, MdTabLinkRipple],
-  declarations: [MdTabGroup, MdTabLabel, MdTab, MdInkBar, MdTabLabelWrapper,
-    MdTabNavBar, MdTabLink, MdTabBody, MdTabLinkRipple, MdTabHeader],
-  providers: [VIEWPORT_RULER_PROVIDER, SCROLL_DISPATCHER_PROVIDER],
-})
-export class MdTabsModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdTabsModule,
-      providers: []
-    };
   }
 }

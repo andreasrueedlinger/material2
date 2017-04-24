@@ -6,6 +6,8 @@ import {OverlayContainer} from './overlay-container';
 import {ConnectedPositionStrategy} from './position/connected-position-strategy';
 import {ConnectedOverlayPositionChange} from './position/connected-position';
 import {Dir} from '../rtl/dir';
+import {dispatchKeyboardEvent} from '../testing/dispatch-events';
+import {ESCAPE} from '../keyboard/keycodes';
 
 
 describe('Overlay directives', () => {
@@ -96,6 +98,17 @@ describe('Overlay directives', () => {
     fixture.detectChanges();
 
     expect(getPaneElement().getAttribute('dir')).toBe('ltr');
+  });
+
+  it('should close when pressing escape', () => {
+    fixture.componentInstance.isOpen = true;
+    fixture.detectChanges();
+
+    dispatchKeyboardEvent(document, 'keydown', ESCAPE);
+    fixture.detectChanges();
+
+    expect(overlayContainerElement.textContent.trim()).toBe('',
+        'Expected overlay to have been detached.');
   });
 
   describe('inputs', () => {
@@ -268,14 +281,14 @@ describe('Overlay directives', () => {
 @Component({
   template: `
   <button cdk-overlay-origin #trigger="cdkOverlayOrigin">Toggle menu</button>
-  <template cdk-connected-overlay [open]="isOpen" [width]="width" [height]="height"
+  <ng-template cdk-connected-overlay [open]="isOpen" [width]="width" [height]="height"
             [origin]="trigger"
             [hasBackdrop]="hasBackdrop" backdropClass="mat-test-class"
             (backdropClick)="backdropClicked=true" [offsetX]="offsetX" [offsetY]="offsetY"
             (positionChange)="positionChangeHandler($event)" (attach)="attachHandler()"
             (detach)="detachHandler()" [minWidth]="minWidth" [minHeight]="minHeight">
     <p>Menu content</p>
-  </template>`,
+  </ng-template>`,
 })
 class ConnectedOverlayDirectiveTest {
   isOpen = false;

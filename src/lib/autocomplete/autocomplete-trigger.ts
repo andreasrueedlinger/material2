@@ -1,29 +1,34 @@
 import {
-    Directive,
-    ElementRef,
-    forwardRef,
-    Host,
-    Input,
-    NgZone,
-    Optional,
-    OnDestroy,
-    ViewContainerRef,
+  Directive,
+  ElementRef,
+  forwardRef,
+  Host,
+  Input,
+  NgZone,
+  Optional,
+  OnDestroy,
+  ViewContainerRef,
+  Inject,
+  ChangeDetectorRef,
 } from '@angular/core';
 import {ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
+import {DOCUMENT} from '@angular/platform-browser';
 import {Overlay, OverlayRef, OverlayState, TemplatePortal} from '../core';
 import {MdAutocomplete} from './autocomplete';
 import {PositionStrategy} from '../core/overlay/position/position-strategy';
 import {ConnectedPositionStrategy} from '../core/overlay/position/connected-position-strategy';
 import {Observable} from 'rxjs/Observable';
-import {MdOptionSelectEvent, MdOption} from '../core/option/option';
+import {MdOptionSelectionChange, MdOption} from '../core/option/option';
 import {ENTER, UP_ARROW, DOWN_ARROW} from '../core/keyboard/keycodes';
 import {Dir} from '../core/rtl/dir';
+import {MdInputContainer} from '../input/input-container';
+import {ScrollDispatcher} from '../core/overlay/scroll/scroll-dispatcher';
 import {Subscription} from 'rxjs/Subscription';
-import {Subject} from 'rxjs/Subject';
 import 'rxjs/add/observable/merge';
+import 'rxjs/add/observable/fromEvent';
+import 'rxjs/add/operator/filter';
 import 'rxjs/add/operator/startWith';
 import 'rxjs/add/operator/switchMap';
-import {MdInputContainer} from '../input/input-container';
 
 /**
  * The following style constants are necessary to save here in order
@@ -58,8 +63,8 @@ export const MD_AUTOCOMPLETE_VALUE_ACCESSOR: any = {
     '[attr.aria-expanded]': 'panelOpen.toString()',
     '[attr.aria-owns]': 'autocomplete?.id',
     '(focus)': 'openPanel()',
-    '(blur)': '_handleBlur($event.relatedTarget?.tagName)',
     '(input)': '_handleInput($event)',
+    '(blur)': '_onTouched()',
     '(keydown)': '_handleKeydown($event)',
   },
   providers: [MD_AUTOCOMPLETE_VALUE_ACCESSOR]
@@ -72,10 +77,11 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
   /** The subscription to positioning changes in the autocomplete panel. */
   private _panelPositionSubscription: Subscription;
 
-  private _positionStrategy: ConnectedPositionStrategy;
+  /** Subscription to global scroll events. */
+  private _scrollSubscription: Subscription;
 
-  /** Stream of blur events that should close the panel. */
-  private _blurStream = new Subject<any>();
+  /** Strategy that is used to position the panel. */
+  private _positionStrategy: ConnectedPositionStrategy;
 
   /** Whether or not the placeholder state is being overridden. */
   private _manuallyFloatingPlaceholder = false;
@@ -101,8 +107,11 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
 
   constructor(private _element: ElementRef, private _overlay: Overlay,
               private _viewContainerRef: ViewContainerRef,
+              private _changeDetectorRef: ChangeDetectorRef,
+              private _scrollDispatcher: ScrollDispatcher,
               @Optional() private _dir: Dir, private _zone: NgZone,
-              @Optional() @Host() private _inputContainer: MdInputContainer) {}
+              @Optional() @Host() private _inputContainer: MdInputContainer,
+              @Optional() @Inject(DOCUMENT) private _document: any) {}
 
   ngOnDestroy() {
     if (this._panelPositionSubscription) {
@@ -114,13 +123,16 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
 
   /* Whether or not the autocomplete panel is open. */
   get panelOpen(): boolean {
-    return this._panelOpen;
+    return this._panelOpen && this.autocomplete.showPanel;
   }
 
   /** Opens the autocomplete suggestion panel. */
   openPanel(): void {
     if (!this._overlayRef) {
       this._createOverlay();
+    } else {
+      /** Update the panel width, in case the host width has changed */
+      this._overlayRef.getState().width = this._getHostWidth();
     }
 
     if (!this._overlayRef.hasAttached()) {
@@ -128,8 +140,15 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
       this._subscribeToClosingActions();
     }
 
-    this._panelOpen = true;
+    if (!this._scrollSubscription) {
+      this._scrollSubscription = this._scrollDispatcher.scrolled(0, () => {
+        this._overlayRef.updatePosition();
+      });
+    }
+
+    this.autocomplete._setVisibility();
     this._floatPlaceholder();
+    this._panelOpen = true;
   }
 
   /** Closes the autocomplete suggestion panel. */
@@ -138,31 +157,54 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
       this._overlayRef.detach();
     }
 
+    if (this._scrollSubscription) {
+      this._scrollSubscription.unsubscribe();
+      this._scrollSubscription = null;
+    }
+
     this._panelOpen = false;
     this._resetPlaceholder();
+
+    // We need to trigger change detection manually, because
+    // `fromEvent` doesn't seem to do it at the proper time.
+    // This ensures that the placeholder is reset when the
+    // user clicks outside.
+    this._changeDetectorRef.detectChanges();
   }
 
   /**
    * A stream of actions that should close the autocomplete panel, including
    * when an option is selected, on blur, and when TAB is pressed.
    */
-  get panelClosingActions(): Observable<MdOptionSelectEvent> {
+  get panelClosingActions(): Observable<MdOptionSelectionChange> {
     return Observable.merge(
-        this.optionSelections,
-        this._blurStream.asObservable(),
-        this.autocomplete._keyManager.tabOut
+      this.optionSelections,
+      this.autocomplete._keyManager.tabOut,
+      this._outsideClickStream
     );
   }
 
   /** Stream of autocomplete option selections. */
-  get optionSelections(): Observable<MdOptionSelectEvent> {
-    return Observable.merge(...this.autocomplete.options.map(option => option.onSelect));
+  get optionSelections(): Observable<MdOptionSelectionChange> {
+    return Observable.merge(...this.autocomplete.options.map(option => option.onSelectionChange));
   }
 
   /** The currently active option, coerced to MdOption type. */
   get activeOption(): MdOption {
     if (this.autocomplete._keyManager) {
       return this.autocomplete._keyManager.activeItem as MdOption;
+    }
+  }
+
+  /** Stream of clicks outside of the autocomplete panel. */
+  private get _outsideClickStream(): Observable<any> {
+    if (this._document) {
+      return Observable.fromEvent(this._document, 'click').filter((event: MouseEvent) => {
+        let clickTarget = event.target as HTMLElement;
+        return this._panelOpen &&
+               !this._inputContainer._elementRef.nativeElement.contains(clickTarget) &&
+               !this._overlayRef.overlayElement.contains(clickTarget);
+      });
     }
   }
 
@@ -201,12 +243,22 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
   _handleKeydown(event: KeyboardEvent): void {
     if (this.activeOption && event.keyCode === ENTER) {
       this.activeOption._selectViaInteraction();
+      event.preventDefault();
     } else {
+      const prevActiveItem = this.autocomplete._keyManager.activeItem;
+      const isArrowKey = event.keyCode === UP_ARROW || event.keyCode === DOWN_ARROW;
+
       this.autocomplete._keyManager.onKeydown(event);
-      if (event.keyCode === UP_ARROW || event.keyCode === DOWN_ARROW) {
+
+      if (isArrowKey) {
         this.openPanel();
-        this._scrollToOption();
       }
+
+      Promise.resolve().then(() => {
+        if (isArrowKey || this.autocomplete._keyManager.activeItem !== prevActiveItem) {
+          this._scrollToOption();
+        }
+      });
     }
   }
 
@@ -217,15 +269,6 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
     if (document.activeElement === event.target) {
       this._onChange((event.target as HTMLInputElement).value);
       this.openPanel();
-    }
-  }
-
-  _handleBlur(newlyFocusedTag: string): void {
-    this._onTouched();
-
-    // Only emit blur event if the new focus is *not* on an option.
-    if (newlyFocusedTag !== 'MD-OPTION') {
-      this._blurStream.next(null);
     }
   }
 
@@ -292,8 +335,8 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
   }
 
   private _setTriggerValue(value: any): void {
-    this._element.nativeElement.value =
-        this.autocomplete.displayWith ? this.autocomplete.displayWith(value) : value;
+    const toDisplay = this.autocomplete.displayWith ? this.autocomplete.displayWith(value) : value;
+    this._element.nativeElement.value = toDisplay || '';
   }
 
    /**
@@ -301,13 +344,25 @@ export class MdAutocompleteTrigger implements ControlValueAccessor, OnDestroy {
    * control to that value. It will also mark the control as dirty if this interaction
    * stemmed from the user.
    */
-  private _setValueAndClose(event: MdOptionSelectEvent | null): void {
-    if (event) {
+  private _setValueAndClose(event: MdOptionSelectionChange | null): void {
+    if (event && event.source) {
+      this._clearPreviousSelectedOption(event.source);
       this._setTriggerValue(event.source.value);
       this._onChange(event.source.value);
     }
 
     this.closePanel();
+  }
+
+  /**
+   * Clear any previous selected option and emit a selection change event for this option
+   */
+  private _clearPreviousSelectedOption(skip: MdOption) {
+    this.autocomplete.options.forEach((option) => {
+      if (option != skip && option.selected) {
+        option.deselect();
+      }
+    });
   }
 
   private _createOverlay(): void {

@@ -1,17 +1,17 @@
 import {
-    Component,
-    ViewEncapsulation,
-    ContentChildren,
-    ContentChild,
-    QueryList,
-    Directive,
-    ElementRef,
-    Renderer,
-    AfterContentInit,
-    NgModule,
-    ModuleWithProviders,
+  Component,
+  ViewEncapsulation,
+  ContentChildren,
+  ContentChild,
+  QueryList,
+  Directive,
+  ElementRef,
+  Input,
+  Optional,
+  Renderer,
+  AfterContentInit,
 } from '@angular/core';
-import {MdLine, MdLineSetter, MdLineModule, CompatibilityModule} from '../core';
+import {MdLine, MdLineSetter, coerceBooleanProperty} from '../core';
 
 @Directive({
   selector: 'md-divider, mat-divider'
@@ -27,10 +27,21 @@ export class MdListDivider {}
   styleUrls: ['list.css'],
   encapsulation: ViewEncapsulation.None
 })
-export class MdList {}
+export class MdList {
+  private _disableRipple: boolean = false;
+
+  /**
+   * Whether the ripple effect should be disabled on the list-items or not.
+   * This flag only has an effect for `md-nav-list` components.
+   */
+  @Input()
+  get disableRipple() { return this._disableRipple; }
+  set disableRipple(value: boolean) { this._disableRipple = coerceBooleanProperty(value); }
+}
 
 /**
  * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
  */
 @Directive({
   selector: 'md-list, mat-list',
@@ -42,6 +53,7 @@ export class MdListCssMatStyler {}
 
 /**
  * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
  */
 @Directive({
   selector: 'md-nav-list, mat-nav-list',
@@ -53,6 +65,7 @@ export class MdNavListCssMatStyler {}
 
 /**
  * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
  */
 @Directive({
   selector: 'md-divider, mat-divider',
@@ -62,7 +75,10 @@ export class MdNavListCssMatStyler {}
 })
 export class MdDividerCssMatStyler {}
 
-/* Need directive for a ContentChild query in list-item */
+/**
+ * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
+ */
 @Directive({
   selector: '[md-list-avatar], [mat-list-avatar]',
   host: {
@@ -71,7 +87,10 @@ export class MdDividerCssMatStyler {}
 })
 export class MdListAvatarCssMatStyler {}
 
-/* Need directive to add mat- CSS styling */
+/**
+ * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
+ */
 @Directive({
   selector: '[md-list-icon], [mat-list-icon]',
   host: {
@@ -82,6 +101,7 @@ export class MdListIconCssMatStyler {}
 
 /**
  * Directive whose purpose is to add the mat- CSS styling to this selector.
+ * @docs-private
  */
 @Directive({
   selector: '[md-subheader], [mat-subheader]',
@@ -104,9 +124,19 @@ export class MdListSubheaderCssMatStyler {}
   encapsulation: ViewEncapsulation.None
 })
 export class MdListItem implements AfterContentInit {
+  private _lineSetter: MdLineSetter;
+  private _disableRipple: boolean = false;
+  private _isNavList: boolean = false;
+
   _hasFocus: boolean = false;
 
-  private _lineSetter: MdLineSetter;
+  /**
+   * Whether the ripple effect on click should be disabled. This applies only to list items that are
+   * part of a nav list. The value of `disableRipple` on the `md-nav-list` overrides this flag.
+   */
+  @Input()
+  get disableRipple() { return this._disableRipple; }
+  set disableRipple(value: boolean) { this._disableRipple = coerceBooleanProperty(value); }
 
   @ContentChildren(MdLine) _lines: QueryList<MdLine>;
 
@@ -116,10 +146,20 @@ export class MdListItem implements AfterContentInit {
         this._element.nativeElement, 'mat-list-item-avatar', avatar != null);
   }
 
-  constructor(private _renderer: Renderer, private _element: ElementRef) {}
+  constructor(private _renderer: Renderer,
+              private _element: ElementRef,
+              @Optional() private _list: MdList,
+              @Optional() navList: MdNavListCssMatStyler) {
+    this._isNavList = !!navList;
+  }
 
   ngAfterContentInit() {
     this._lineSetter = new MdLineSetter(this._lines, this._renderer, this._element);
+  }
+
+  /** Whether this list item should show a ripple effect when clicked.  */
+  isRippleEnabled() {
+    return !this.disableRipple && this._isNavList && !this._list.disableRipple;
   }
 
   _handleFocus() {
@@ -128,43 +168,5 @@ export class MdListItem implements AfterContentInit {
 
   _handleBlur() {
     this._hasFocus = false;
-  }
-}
-
-
-@NgModule({
-  imports: [MdLineModule, CompatibilityModule],
-  exports: [
-    MdList,
-    MdListItem,
-    MdListDivider,
-    MdListAvatarCssMatStyler,
-    MdLineModule,
-    CompatibilityModule,
-    MdListIconCssMatStyler,
-    MdListCssMatStyler,
-    MdNavListCssMatStyler,
-    MdDividerCssMatStyler,
-    MdListSubheaderCssMatStyler
-  ],
-  declarations: [
-    MdList,
-    MdListItem,
-    MdListDivider,
-    MdListAvatarCssMatStyler,
-    MdListIconCssMatStyler,
-    MdListCssMatStyler,
-    MdNavListCssMatStyler,
-    MdDividerCssMatStyler,
-    MdListSubheaderCssMatStyler
-  ],
-})
-export class MdListModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdListModule,
-      providers: []
-    };
   }
 }

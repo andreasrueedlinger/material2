@@ -1,11 +1,19 @@
-import {async, fakeAsync, flushMicrotasks, ComponentFixture, TestBed} from '@angular/core/testing';
+import {
+  async,
+  fakeAsync,
+  flushMicrotasks,
+  ComponentFixture,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
 import {NgControl, FormsModule, ReactiveFormsModule, FormControl} from '@angular/forms';
 import {Component, DebugElement} from '@angular/core';
 import {By} from '@angular/platform-browser';
-import {MdCheckbox, MdCheckboxChange, MdCheckboxModule} from './checkbox';
+import {MdCheckbox, MdCheckboxChange, MdCheckboxModule} from './index';
 import {ViewportRuler} from '../core/overlay/position/viewport-ruler';
 import {FakeViewportRuler} from '../core/overlay/position/fake-viewport-ruler';
 import {dispatchFakeEvent} from '../core/testing/dispatch-events';
+import {RIPPLE_FADE_IN_DURATION, RIPPLE_FADE_OUT_DURATION} from '../core/ripple/ripple-renderer';
 
 
 describe('MdCheckbox', () => {
@@ -26,7 +34,7 @@ describe('MdCheckbox', () => {
         CheckboxWithFormControl,
       ],
       providers: [
-        {provide: ViewportRuler, useClass: FakeViewportRuler},
+        {provide: ViewportRuler, useClass: FakeViewportRuler}
       ]
     });
 
@@ -93,7 +101,47 @@ describe('MdCheckbox', () => {
       expect(inputElement.indeterminate).toBe(false);
     });
 
-    it('should set indeterminate to false when set checked', () => {
+    it('should set indeterminate to false when input clicked', async(() => {
+      testComponent.isIndeterminate = true;
+      fixture.detectChanges();
+
+      expect(checkboxInstance.indeterminate).toBe(true);
+      expect(inputElement.indeterminate).toBe(true);
+      expect(testComponent.isIndeterminate).toBe(true);
+
+      inputElement.click();
+      fixture.detectChanges();
+
+      fixture.whenStable().then(() => {
+        fixture.detectChanges();
+        expect(checkboxInstance.checked).toBe(true);
+        expect(inputElement.indeterminate).toBe(false);
+        expect(inputElement.checked).toBe(true);
+        expect(testComponent.isIndeterminate).toBe(false);
+
+        testComponent.isIndeterminate = true;
+        fixture.detectChanges();
+
+        expect(checkboxInstance.indeterminate).toBe(true);
+        expect(inputElement.indeterminate).toBe(true);
+        expect(inputElement.checked).toBe(true);
+        expect(testComponent.isIndeterminate).toBe(true);
+
+        inputElement.click();
+        fixture.detectChanges();
+
+        fixture.whenStable().then(() => {
+          fixture.detectChanges();
+          expect(checkboxInstance.checked).toBe(false);
+          expect(inputElement.indeterminate).toBe(false);
+          expect(inputElement.checked).toBe(false);
+          expect(testComponent.isIndeterminate).toBe(false);
+        });
+      });
+
+    }));
+
+    it('should not set indeterminate to false when checked is set programmatically', async(() => {
       testComponent.isIndeterminate = true;
       fixture.detectChanges();
 
@@ -105,14 +153,6 @@ describe('MdCheckbox', () => {
       fixture.detectChanges();
 
       expect(checkboxInstance.checked).toBe(true);
-      expect(inputElement.indeterminate).toBe(false);
-      expect(inputElement.checked).toBe(true);
-      expect(testComponent.isIndeterminate).toBe(false);
-
-      testComponent.isIndeterminate = true;
-      fixture.detectChanges();
-
-      expect(checkboxInstance.indeterminate).toBe(true);
       expect(inputElement.indeterminate).toBe(true);
       expect(inputElement.checked).toBe(true);
       expect(testComponent.isIndeterminate).toBe(true);
@@ -121,10 +161,10 @@ describe('MdCheckbox', () => {
       fixture.detectChanges();
 
       expect(checkboxInstance.checked).toBe(false);
-      expect(inputElement.indeterminate).toBe(false);
+      expect(inputElement.indeterminate).toBe(true);
       expect(inputElement.checked).toBe(false);
-      expect(testComponent.isIndeterminate).toBe(false);
-    });
+      expect(testComponent.isIndeterminate).toBe(true);
+    }));
 
     it('should change native element checked when check programmatically', () => {
       expect(inputElement.checked).toBe(false);
@@ -149,7 +189,7 @@ describe('MdCheckbox', () => {
       expect(checkboxInstance.checked).toBe(false);
     });
 
-    it('should change from indeterminate to checked on click', () => {
+    it('should change from indeterminate to checked on click', async(() => {
       testComponent.isChecked = false;
       testComponent.isIndeterminate = true;
       fixture.detectChanges();
@@ -157,17 +197,19 @@ describe('MdCheckbox', () => {
       expect(checkboxInstance.checked).toBe(false);
       expect(checkboxInstance.indeterminate).toBe(true);
 
-      checkboxInstance._onInteractionEvent(<Event>{stopPropagation: () => {}});
+      checkboxInstance._onInputClick(<Event>{stopPropagation: () => {}});
 
-      expect(checkboxInstance.checked).toBe(true);
-      expect(checkboxInstance.indeterminate).toBe(false);
+      fixture.whenStable().then(() => {
+        expect(checkboxInstance.checked).toBe(true);
+        expect(checkboxInstance.indeterminate).toBe(false);
 
-      checkboxInstance._onInteractionEvent(<Event>{stopPropagation: () => {}});
-      fixture.detectChanges();
+        checkboxInstance._onInputClick(<Event>{stopPropagation: () => {}});
+        fixture.detectChanges();
 
-      expect(checkboxInstance.checked).toBe(false);
-      expect(checkboxInstance.indeterminate).toBe(false);
-    });
+        expect(checkboxInstance.checked).toBe(false);
+        expect(checkboxInstance.indeterminate).toBe(false);
+      });
+    }));
 
     it('should add and remove disabled state', () => {
       expect(checkboxInstance.disabled).toBe(false);
@@ -199,16 +241,18 @@ describe('MdCheckbox', () => {
       expect(checkboxInstance.checked).toBe(false);
     });
 
-    it('should overwrite indeterminate state when checked is re-set', () => {
+    it('should overwrite indeterminate state when clicked', async(() => {
       testComponent.isIndeterminate = true;
       fixture.detectChanges();
 
-      testComponent.isChecked = true;
+      inputElement.click();
       fixture.detectChanges();
 
-      expect(checkboxInstance.checked).toBe(true);
-      expect(checkboxInstance.indeterminate).toBe(false);
-    });
+      fixture.whenStable().then(() => {
+        expect(checkboxInstance.checked).toBe(true);
+        expect(checkboxInstance.indeterminate).toBe(false);
+      });
+    }));
 
     it('should preserve the user-provided id', () => {
       expect(checkboxNativeElement.id).toBe('simple-check');
@@ -314,6 +358,32 @@ describe('MdCheckbox', () => {
       expect(document.activeElement).toBe(inputElement);
     });
 
+    it('should forward the value to input element', () => {
+      testComponent.checkboxValue = 'basic_checkbox';
+      fixture.detectChanges();
+
+      expect(inputElement.value).toBe('basic_checkbox');
+    });
+
+    it('should show a ripple when focused by a keyboard action', fakeAsync(() => {
+      expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(0, 'Expected no ripples on load.');
+
+      dispatchFakeEvent(inputElement, 'keydown');
+      dispatchFakeEvent(inputElement, 'focus');
+
+      tick(RIPPLE_FADE_IN_DURATION);
+
+      expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(1, 'Expected ripple after element is focused.');
+
+      dispatchFakeEvent(checkboxInstance._inputElement.nativeElement, 'blur');
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(0, 'Expected no ripple after element is blurred.');
+    }));
+
     describe('ripple elements', () => {
 
       it('should show ripples on label mousedown', () => {
@@ -325,31 +395,41 @@ describe('MdCheckbox', () => {
         expect(checkboxNativeElement.querySelectorAll('.mat-ripple-element').length).toBe(1);
       });
 
-      it('should not have a ripple when disabled', () => {
-        let rippleElement = checkboxNativeElement.querySelector('[md-ripple]');
-        expect(rippleElement).toBeTruthy('Expected an enabled checkbox to have a ripple');
-
+      it('should not show ripples when disabled', () => {
         testComponent.isDisabled = true;
         fixture.detectChanges();
 
-        rippleElement = checkboxNativeElement.querySelector('[md-ripple]');
-        expect(rippleElement).toBeFalsy('Expected a disabled checkbox not to have a ripple');
+        dispatchFakeEvent(labelElement, 'mousedown');
+        dispatchFakeEvent(labelElement, 'mouseup');
+
+        expect(checkboxNativeElement.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+        testComponent.isDisabled = false;
+        fixture.detectChanges();
+
+        dispatchFakeEvent(labelElement, 'mousedown');
+        dispatchFakeEvent(labelElement, 'mouseup');
+
+        expect(checkboxNativeElement.querySelectorAll('.mat-ripple-element').length).toBe(1);
       });
 
-      it('should remove ripple if mdRippleDisabled input is set', async(() => {
+      it('should remove ripple if mdRippleDisabled input is set', () => {
         testComponent.disableRipple = true;
         fixture.detectChanges();
 
-        expect(checkboxNativeElement.querySelectorAll('[md-ripple]').length)
-          .toBe(0, 'Expect no [md-ripple] in checkbox');
+        dispatchFakeEvent(labelElement, 'mousedown');
+        dispatchFakeEvent(labelElement, 'mouseup');
+
+        expect(checkboxNativeElement.querySelectorAll('.mat-ripple-element').length).toBe(0);
 
         testComponent.disableRipple = false;
         fixture.detectChanges();
 
-        expect(checkboxNativeElement.querySelectorAll('[md-ripple]').length)
-          .toBe(1, 'Expect [md-ripple] in checkbox');
-      }));
+        dispatchFakeEvent(labelElement, 'mousedown');
+        dispatchFakeEvent(labelElement, 'mouseup');
 
+        expect(checkboxNativeElement.querySelectorAll('.mat-ripple-element').length).toBe(1);
+      });
     });
 
     describe('color behaviour', () => {
@@ -384,11 +464,11 @@ describe('MdCheckbox', () => {
 
     describe('state transition css classes', () => {
       it('should transition unchecked -> checked -> unchecked', () => {
-        testComponent.isChecked = true;
+        inputElement.click();
         fixture.detectChanges();
         expect(checkboxNativeElement.classList).toContain('mat-checkbox-anim-unchecked-checked');
 
-        testComponent.isChecked = false;
+        inputElement.click();
         fixture.detectChanges();
         expect(checkboxNativeElement.classList)
             .not.toContain('mat-checkbox-anim-unchecked-checked');
@@ -416,7 +496,7 @@ describe('MdCheckbox', () => {
         testComponent.isIndeterminate = true;
         fixture.detectChanges();
 
-        testComponent.isChecked = true;
+        inputElement.click();
         fixture.detectChanges();
 
         expect(checkboxNativeElement.classList).not.toContain(
@@ -655,6 +735,7 @@ describe('MdCheckbox', () => {
     let checkboxDebugElement: DebugElement;
     let checkboxInstance: MdCheckbox;
     let testComponent: CheckboxWithFormControl;
+    let inputElement: HTMLInputElement;
 
     beforeEach(() => {
       fixture = TestBed.createComponent(CheckboxWithFormControl);
@@ -663,6 +744,7 @@ describe('MdCheckbox', () => {
       checkboxDebugElement = fixture.debugElement.query(By.directive(MdCheckbox));
       checkboxInstance = checkboxDebugElement.componentInstance;
       testComponent = fixture.debugElement.componentInstance;
+      inputElement = <HTMLInputElement>checkboxDebugElement.nativeElement.querySelector('input');
     });
 
     it('should toggle the disabled state', () => {
@@ -672,11 +754,13 @@ describe('MdCheckbox', () => {
       fixture.detectChanges();
 
       expect(checkboxInstance.disabled).toBe(true);
+      expect(inputElement.disabled).toBe(true);
 
       testComponent.formControl.enable();
       fixture.detectChanges();
 
       expect(checkboxInstance.disabled).toBe(false);
+      expect(inputElement.disabled).toBe(false);
     });
   });
 });
@@ -694,6 +778,7 @@ describe('MdCheckbox', () => {
         [disabled]="isDisabled"
         [color]="checkboxColor"
         [disableRipple]="disableRipple"
+        [value]="checkboxValue"
         (change)="changeCount = changeCount + 1"
         (click)="onCheckboxClick($event)"
         (change)="onCheckboxChange($event)">
@@ -713,6 +798,7 @@ class SingleCheckbox {
   lastKeydownEvent: Event = null;
   changeCount: number = 0;
   checkboxColor: string = 'primary';
+  checkboxValue: string = 'single_checkbox';
 
   onCheckboxClick(event: Event) {}
   onCheckboxChange(event: MdCheckboxChange) {}

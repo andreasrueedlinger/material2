@@ -101,13 +101,16 @@ export class FocusOriginMonitor {
    * Stops monitoring an element and removes all focus classes.
    * @param element The element to stop monitoring.
    */
-  unmonitor(element: Element): void {
-    if (!this._elementInfo.has(element)) {
-      return;
+  stopMonitoring(element: Element): void {
+    let elementInfo = this._elementInfo.get(element);
+
+    if (elementInfo) {
+      elementInfo.unlisten();
+      elementInfo.subject.complete();
+
+      this._setClasses(element, null);
+      this._elementInfo.delete(element);
     }
-    this._elementInfo.get(element).unlisten();
-    this._setClasses(element, null);
-    this._elementInfo.delete(element);
   }
 
   /**
@@ -281,8 +284,7 @@ export class FocusOriginMonitor {
   selector: '[cdkMonitorElementFocus], [cdkMonitorSubtreeFocus]',
 })
 export class CdkMonitorFocus implements OnDestroy {
-  @Output()
-  cdkFocusChange = new EventEmitter<FocusOrigin>();
+  @Output() cdkFocusChange = new EventEmitter<FocusOrigin>();
 
   constructor(private _elementRef: ElementRef, private _focusOriginMonitor: FocusOriginMonitor,
               renderer: Renderer) {
@@ -293,7 +295,7 @@ export class CdkMonitorFocus implements OnDestroy {
   }
 
   ngOnDestroy() {
-    this._focusOriginMonitor.unmonitor(this._elementRef.nativeElement);
+    this._focusOriginMonitor.stopMonitoring(this._elementRef.nativeElement);
   }
 }
 

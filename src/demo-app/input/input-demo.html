@@ -40,7 +40,10 @@
         <td>
           <md-input-container class="demo-full-width">
             <input mdInput #postalCode maxLength="5" placeholder="Postal Code" value="94043">
-            <md-hint align="end">{{postalCode.value.length}} / 5</md-hint>
+            <md-hint align="end">
+              <md-icon>mode_edit</md-icon>
+              {{postalCode.value.length}} / 5
+            </md-hint>
           </md-input-container>
         </td>
       </tr></table>
@@ -49,12 +52,65 @@
 </md-card>
 
 <md-card class="demo-card demo-basic">
+  <md-toolbar color="primary">Error messages</md-toolbar>
+  <md-card-content>
+    <h4>Regular</h4>
+
+    <p>
+      <md-input-container>
+        <input mdInput placeholder="example" [(ngModel)]="errorMessageExample1" required>
+        <md-error>This field is required</md-error>
+      </md-input-container>
+
+      <md-input-container>
+        <input mdInput placeholder="email" [formControl]="emailFormControl">
+        <md-error *ngIf="emailFormControl.hasError('required')">
+          This field is required
+        </md-error>
+        <md-error *ngIf="emailFormControl.hasError('pattern')">
+          Please enter a valid email address
+        </md-error>
+      </md-input-container>
+    </p>
+
+    <h4>With hint</h4>
+
+    <md-input-container>
+      <input mdInput placeholder="example" [(ngModel)]="errorMessageExample2" required>
+      <md-error>This field is required</md-error>
+      <md-hint>Please type something here</md-hint>
+    </md-input-container>
+
+
+    <form novalidate>
+      <h4>Inside a form</h4>
+
+      <md-input-container>
+        <input mdInput name="example" placeholder="example"
+          [(ngModel)]="errorMessageExample3" required>
+        <md-error>This field is required</md-error>
+      </md-input-container>
+
+      <button color="primary" md-raised-button>Submit</button>
+    </form>
+  </md-card-content>
+</md-card>
+
+<md-card class="demo-card demo-basic">
   <md-toolbar color="primary">Prefix + Suffix</md-toolbar>
   <md-card-content>
+    <h4>Text</h4>
     <md-input-container align="end">
       <input mdInput placeholder="amount">
       <span mdPrefix>$&nbsp;</span>
       <span mdSuffix>.00</span>
+    </md-input-container>
+
+    <h4>Icons</h4>
+    <md-input-container>
+      <input mdInput placeholder="amount">
+      <md-icon mdPrefix>attach_money</md-icon>
+      <md-icon mdSuffix>mode_edit</md-icon>
     </md-input-container>
   </md-card-content>
 </md-card>
@@ -63,24 +119,24 @@
   <md-toolbar color="primary">Divider Colors</md-toolbar>
   <md-card-content>
     <h4>Input</h4>
-    <md-input-container dividerColor="primary" >
+    <md-input-container color="primary" >
       <input mdInput placeholder="Default Color" value="example">
     </md-input-container>
-    <md-input-container dividerColor="accent">
+    <md-input-container color="accent">
       <input mdInput placeholder="Accent Color" value="example">
     </md-input-container>
-    <md-input-container dividerColor="warn">
+    <md-input-container color="warn">
       <input mdInput placeholder="Warn Color" value="example">
     </md-input-container>
 
     <h4>Textarea</h4>
-    <md-input-container dividerColor="primary">
+    <md-input-container color="primary">
       <textarea mdInput placeholder="Default Color">example</textarea>
     </md-input-container>
-    <md-input-container dividerColor="accent">
+    <md-input-container color="accent">
       <textarea mdInput placeholder="Accent Color">example</textarea>
     </md-input-container>
-    <md-input-container dividerColor="warn">
+    <md-input-container color="warn">
       <textarea mdInput placeholder="Warn Color">example</textarea>
     </md-input-container>
   </md-card-content>
@@ -117,7 +173,7 @@
 <md-card class="demo-card demo-basic">
   <md-toolbar color="primary">
     Hello&nbsp;
-    <md-input-container dividerColor="accent">
+    <md-input-container color="accent">
       <input mdInput [(ngModel)]="name" type="text" placeholder="First name">
     </md-input-container>,
     how are you?
@@ -152,10 +208,10 @@
       <md-input-container>
         <input mdInput>
         <md-placeholder>
-          I <md-icon class="demo-icons">favorite</md-icon> <b>bold</b> placeholder
+          I <md-icon>favorite</md-icon> <b>bold</b> placeholder
         </md-placeholder>
         <md-hint>
-          I also <md-icon class="demo-icons">home</md-icon> <i>italic</i> hint labels
+          I also <md-icon>home</md-icon> <i>italic</i> hint labels
         </md-hint>
       </md-input-container>
     </p>
@@ -166,9 +222,18 @@
       </md-input-container>
     </p>
     <p>
-      <md-checkbox [(ngModel)]="dividerColor">Check to change the divider color:</md-checkbox>
-      <md-input-container [dividerColor]="dividerColor ? 'primary' : 'accent'">
-        <input mdInput [placeholder]="dividerColor ? 'Primary color' : 'Accent color'">
+      <md-input-container style="margin-bottom: 4em">
+        <textarea mdInput #longHint placeholder="Enter text to count"></textarea>
+        <md-hint>
+          Enter some text to count how many characters are in it. The character count is shown on the right.
+        </md-hint>
+        <md-hint align="end" style="white-space: nowrap">Length: {{longHint.value.length}}</md-hint>
+      </md-input-container>
+    </p>
+    <p>
+      <md-checkbox [(ngModel)]="color">Check to change the color:</md-checkbox>
+      <md-input-container [color]="color ? 'primary' : 'accent'">
+        <input mdInput [placeholder]="color ? 'Primary color' : 'Accent color'">
       </md-input-container>
     </p>
     <p>
@@ -206,13 +271,8 @@
       Both:
       <md-input-container align="end">
         <input mdInput #email placeholder="Email Address" value="angular-core">
-        <span mdPrefix>
-          <md-icon [class.primary]="email.focused" class="demo-icons demo-transform">email</md-icon>
-          &nbsp;
-        </span>
-        <span mdSuffix class="demo-transform" [class.primary]="email.focused">
-          &nbsp;@gmail.com
-        </span>
+        <span mdPrefix><md-icon [class.primary]="email.focused">email</md-icon>&nbsp;</span>
+        <span mdSuffix [class.primary]="email.focused">&nbsp;@gmail.com</span>
       </md-input-container>
     </p>
 

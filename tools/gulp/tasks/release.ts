@@ -1,30 +1,62 @@
 import {spawn} from 'child_process';
-import {existsSync, statSync} from 'fs';
-import {task} from 'gulp';
-import gulpRunSequence = require('run-sequence');
-import path = require('path');
-import minimist = require('minimist');
+import {existsSync, statSync, writeFileSync} from 'fs-extra';
+import {join} from 'path';
+import {dest, src, task} from 'gulp';
+import {execTask, sequenceTask} from '../util/task_helpers';
+import {composeRelease} from '../util/package-build';
+import {Bundler} from 'scss-bundle';
+import {
+  COMPONENTS_DIR,
+  DIST_MATERIAL,
+  DIST_RELEASES,
+} from '../constants';
+import * as minimist from 'minimist';
 
-import {execTask, cleanTask} from '../task_helpers';
-import {DIST_COMPONENTS_ROOT} from '../constants';
+// There are no type definitions available for these imports.
+const gulpRename = require('gulp-rename');
 
+/** Parse command-line arguments for release task. */
 const argv = minimist(process.argv.slice(3));
 
-/** Removes redundant spec files from the release. TypeScript creates definition files for specs. */
-// TODO(devversion): tsconfig files should share code and don't generate spec files for releases.
-task(':build:release:clean-spec', cleanTask('dist/**/*+(-|.)spec.*'));
+// Path to the release output of material.
+const releasePath = join(DIST_RELEASES, 'material');
 
+// The entry-point for the scss theming bundle.
+const themingEntryPointPath = join(COMPONENTS_DIR, 'core', 'theming', '_all-theme.scss');
 
-task('build:release', function(done: () => void) {
-  // Synchronously run those tasks.
-  gulpRunSequence(
-    'clean',
-    ':build:components:ngc',
-    ':build:release:clean-spec',
-    done
-  );
+// Output path for the scss theming bundle.
+const themingBundlePath = join(releasePath, '_theming.scss');
+
+// Matches all SCSS files in the library.
+const allScssGlob = join(COMPONENTS_DIR, '**/*.scss');
+
+// Matches all pre-built theme css files
+const prebuiltThemeGlob = join(DIST_MATERIAL, '**/theming/prebuilt/*.css');
+
+task('build:release', sequenceTask(
+  'library:clean-build',
+  ':package:release',
+));
+
+/** Task that composes the different build files into the release structure. */
+task(':package:release', [':package:theming'], () => composeRelease('material'));
+
+/** Copies all prebuilt themes into the release package under `prebuilt-themes/` */
+task(':package:theming', [':bundle:theming-scss'], () => {
+  src(prebuiltThemeGlob)
+    .pipe(gulpRename({dirname: ''}))
+    .pipe(dest(join(releasePath, 'prebuilt-themes')));
 });
 
+/** Bundles all scss requires for theming into a single scss file in the root of the package. */
+task(':bundle:theming-scss', () => {
+  // Instantiates the SCSS bundler and bundles all imports of the specified entry point SCSS file.
+  // A glob of all SCSS files in the library will be passed to the bundler. The bundler takes an
+  // array of globs, which will match SCSS files that will be only included once in the bundle.
+  new Bundler().Bundle(themingEntryPointPath, [allScssGlob]).then(result => {
+    writeFileSync(themingBundlePath, result.bundledContent);
+  });
+});
 
 /** Make sure we're logged in. */
 task(':publish:whoami', execTask('npm', ['whoami'], {
@@ -36,13 +68,17 @@ task(':publish:logout', execTask('npm', ['logout']));
 
 
 function _execNpmPublish(label: string): Promise<{}> {
-  const packageDir = DIST_COMPONENTS_ROOT;
+  const packageDir = releasePath;
   if (!statSync(packageDir).isDirectory()) {
     return;
   }
 
-  if (!existsSync(path.join(packageDir, 'package.json'))) {
+  if (!existsSync(join(packageDir, 'package.json'))) {
     throw new Error(`"${packageDir}" does not have a package.json.`);
+  }
+
+  if (!existsSync(join(packageDir, 'LICENSE'))) {
+    throw new Error(`"${packageDir}" does not have a LICENSE file`);
   }
 
   process.chdir(packageDir);
@@ -94,12 +130,9 @@ task(':publish', function(done: (err?: any) => void) {
     .then(() => process.chdir(currentDir));
 });
 
-task('publish', function(done: () => void) {
-  gulpRunSequence(
-    ':publish:whoami',
-    'build:release',
-    ':publish',
-    ':publish:logout',
-    done
-  );
-});
+task('publish', sequenceTask(
+  ':publish:whoami',
+  'build:release',
+  ':publish',
+  ':publish:logout',
+));

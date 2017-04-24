@@ -1,6 +1,4 @@
 import {
-  NgModule,
-  ModuleWithProviders,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
@@ -14,11 +12,10 @@ import {
   Optional,
   SkipSelf,
 } from '@angular/core';
-import {HttpModule, Http} from '@angular/http';
+import {Http} from '@angular/http';
 import {DomSanitizer} from '@angular/platform-browser';
-import {MdError, CompatibilityModule} from '../core';
+import {MdError} from '../core';
 import {MdIconRegistry, MdIconNameNotFoundError} from './icon-registry';
-export {MdIconRegistry} from './icon-registry';
 
 /** Exception thrown when an invalid icon name is passed to an md-icon component. */
 export class MdIconInvalidNameError extends MdError {
@@ -253,7 +250,7 @@ export class MdIcon implements OnChanges, OnInit, AfterViewChecked {
 export function ICON_REGISTRY_PROVIDER_FACTORY(
     parentRegistry: MdIconRegistry, http: Http, sanitizer: DomSanitizer) {
   return parentRegistry || new MdIconRegistry(http, sanitizer);
-};
+}
 
 export const ICON_REGISTRY_PROVIDER = {
   // If there is already an MdIconRegistry available, use that. Otherwise, provide a new one.
@@ -261,19 +258,3 @@ export const ICON_REGISTRY_PROVIDER = {
   deps: [[new Optional(), new SkipSelf(), MdIconRegistry], Http, DomSanitizer],
   useFactory: ICON_REGISTRY_PROVIDER_FACTORY,
 };
-
-@NgModule({
-  imports: [HttpModule, CompatibilityModule],
-  exports: [MdIcon, CompatibilityModule],
-  declarations: [MdIcon],
-  providers: [ICON_REGISTRY_PROVIDER],
-})
-export class MdIconModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdIconModule,
-      providers: [],
-    };
-  }
-}

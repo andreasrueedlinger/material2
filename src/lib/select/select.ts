@@ -9,22 +9,29 @@ import {
   Optional,
   Output,
   QueryList,
-  Renderer,
+  Renderer2,
   Self,
   ViewEncapsulation,
   ViewChild,
   ChangeDetectorRef,
+  Attribute,
+  OnInit,
 } from '@angular/core';
-import {MdOption, MdOptionSelectEvent} from '../core/option/option';
+import {MdOption, MdOptionSelectionChange} from '../core/option/option';
 import {ENTER, SPACE} from '../core/keyboard/keycodes';
 import {FocusKeyManager} from '../core/a11y/focus-key-manager';
 import {Dir} from '../core/rtl/dir';
+import {Observable} from 'rxjs/Observable';
 import {Subscription} from 'rxjs/Subscription';
 import {transformPlaceholder, transformPanel, fadeInContent} from './select-animations';
 import {ControlValueAccessor, NgControl} from '@angular/forms';
 import {coerceBooleanProperty} from '../core/coercion/boolean-property';
 import {ConnectedOverlayDirective} from '../core/overlay/overlay-directives';
 import {ViewportRuler} from '../core/overlay/position/viewport-ruler';
+import {SelectionModel} from '../core/selection/selection';
+import {ScrollDispatcher} from '../core/overlay/scroll/scroll-dispatcher';
+import {MdSelectDynamicMultipleError, MdSelectNonArrayValueError} from './select-errors';
+import 'rxjs/add/observable/merge';
 import 'rxjs/add/operator/startWith';
 
 
@@ -57,6 +64,17 @@ export const SELECT_OPTION_HEIGHT_ADJUSTMENT = 9;
 export const SELECT_PANEL_PADDING_X = 16;
 
 /**
+ * Distance between the panel edge and the option text in
+ * multi-selection mode.
+ *
+ * (SELECT_PADDING * 1.75) + 20 = 48
+ * The padding is multiplied by 1.75 because the checkbox's margin is half the padding, and
+ * the browser adds ~4px, because we're using inline elements.
+ * The checkbox width is 20px.
+ */
+export const SELECT_MULTIPLE_PANEL_PADDING_X = SELECT_PANEL_PADDING_X * 1.75 + 20;
+
+/**
  * The panel's padding on the y-axis. This padding indicates there are more
  * options available if you scroll.
  */
@@ -84,8 +102,9 @@ export type MdSelectFloatPlaceholderType = 'always' | 'never' | 'auto';
   encapsulation: ViewEncapsulation.None,
   host: {
     'role': 'listbox',
-    '[attr.tabindex]': '_getTabIndex()',
-    '[attr.aria-label]': 'placeholder',
+    '[attr.tabindex]': 'tabIndex',
+    '[attr.aria-label]': '_ariaLabel',
+    '[attr.aria-labelledby]': 'ariaLabelledby',
     '[attr.aria-required]': 'required.toString()',
     '[attr.aria-disabled]': 'disabled.toString()',
     '[attr.aria-invalid]': '_control?.invalid || "false"',
@@ -93,7 +112,7 @@ export type MdSelectFloatPlaceholderType = 'always' | 'never' | 'auto';
     '[class.mat-select-disabled]': 'disabled',
     '[class.mat-select]': 'true',
     '(keydown)': '_handleKeydown($event)',
-    '(blur)': '_onBlur()'
+    '(blur)': '_onBlur()',
   },
   animations: [
     transformPlaceholder,
@@ -102,21 +121,21 @@ export type MdSelectFloatPlaceholderType = 'always' | 'never' | 'auto';
   ],
   exportAs: 'mdSelect',
 })
-export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestroy {
+export class MdSelect implements AfterContentInit, OnDestroy, OnInit, ControlValueAccessor {
   /** Whether or not the overlay panel is open. */
   private _panelOpen = false;
 
-  /** The currently selected option. */
-  private _selected: MdOption;
-
   /** Subscriptions to option events. */
-  private _subscriptions: Subscription[] = [];
+  private _optionSubscription: Subscription;
 
   /** Subscription to changes in the option list. */
   private _changeSubscription: Subscription;
 
   /** Subscription to tab events while overlay is focused. */
   private _tabSubscription: Subscription;
+
+  /** Subscription to global scrolled events while the select is open. */
+  private _scrollSubscription: Subscription;
 
   /** Whether filling out the select is required in the form.  */
   private _required: boolean = false;
@@ -130,8 +149,20 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   /** The placeholder displayed in the trigger of the select. */
   private _placeholder: string;
 
+  /** Whether the component is in multiple selection mode. */
+  private _multiple: boolean = false;
+
+  /** Deals with the selection logic. */
+  _selectionModel: SelectionModel<MdOption>;
+
   /** The animation state of the placeholder. */
   private _placeholderState = '';
+
+  /** Tab index for the element. */
+  private _tabIndex: number;
+
+  /** Theme color for the component. */
+  private _color: string;
 
   /**
    * The width of the trigger. Must be saved to set the min width of the overlay panel
@@ -162,13 +193,6 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
 
   /** Whether the panel's animation is done. */
   _panelDoneAnimating: boolean = false;
-
-  /**
-   * The x-offset of the overlay panel in relation to the trigger's top start corner.
-   * This must be adjusted to align the selected option text over the trigger text when
-   * the panel opens. Will change based on LTR or RTL text direction.
-   */
-  _offsetX = 0;
 
   /**
    * The y-offset of the overlay panel in relation to the trigger's top start corner.
@@ -214,7 +238,7 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     this._placeholder = value;
 
     // Must wait to record the trigger width to ensure placeholder width is included.
-    Promise.resolve(null).then(() => this._triggerWidth = this._getWidth());
+    Promise.resolve(null).then(() => this._setTriggerWidth());
   }
 
   /** Whether the component is disabled. */
@@ -229,6 +253,17 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   get required() { return this._required; }
   set required(value: any) { this._required = coerceBooleanProperty(value); }
 
+  /** Whether the user should be allowed to select multiple options. */
+  @Input()
+  get multiple(): boolean { return this._multiple; }
+  set multiple(value: boolean) {
+    if (this._selectionModel) {
+      throw new MdSelectDynamicMultipleError();
+    }
+
+    this._multiple = coerceBooleanProperty(value);
+  }
+
   /** Whether to float the placeholder text. */
   @Input()
   get floatPlaceholder(): MdSelectFloatPlaceholderType { return this._floatPlaceholder; }
@@ -236,6 +271,37 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     this._floatPlaceholder = value || 'auto';
   }
   private _floatPlaceholder: MdSelectFloatPlaceholderType = 'auto';
+
+  /** Tab index for the select element. */
+  @Input()
+  get tabIndex(): number { return this._disabled ? -1 : this._tabIndex; }
+  set tabIndex(value: number) {
+    if (typeof value !== 'undefined') {
+      this._tabIndex = value;
+    }
+  }
+
+  /** Aria label of the select. If not specified, the placeholder will be used as label. */
+  @Input('aria-label') ariaLabel: string = '';
+
+  /** Input that can be used to specify the `aria-labelledby` attribute. */
+  @Input('aria-labelledby') ariaLabelledby: string = '';
+
+  /** Theme color for the component. */
+  @Input()
+  get color(): string { return this._color; }
+  set color(value: string) {
+    if (value && value !== this._color) {
+      this._renderer.removeClass(this._element.nativeElement, `mat-${this._color}`);
+      this._renderer.addClass(this._element.nativeElement, `mat-${value}`);
+      this._color = value;
+    }
+  }
+
+  /** Combined stream of all of the child options' change events. */
+  get optionSelectionChanges(): Observable<MdOptionSelectionChange> {
+    return Observable.merge(...this.options.map(option => option.onSelectionChange));
+  }
 
   /** Event emitted when the select has been opened. */
   @Output() onOpen: EventEmitter<void> = new EventEmitter<void>();
@@ -246,12 +312,22 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   /** Event emitted when the selected value has been changed by the user. */
   @Output() change: EventEmitter<MdSelectChange> = new EventEmitter<MdSelectChange>();
 
-  constructor(private _element: ElementRef, private _renderer: Renderer,
+  constructor(private _element: ElementRef, private _renderer: Renderer2,
               private _viewportRuler: ViewportRuler, private _changeDetectorRef: ChangeDetectorRef,
-              @Optional() private _dir: Dir, @Self() @Optional() public _control: NgControl) {
+              private _scrollDispatcher: ScrollDispatcher, @Optional() private _dir: Dir,
+              @Self() @Optional() public _control: NgControl,
+              @Attribute('tabindex') tabIndex: string) {
+
     if (this._control) {
       this._control.valueAccessor = this;
     }
+
+    this._tabIndex = parseInt(tabIndex) || 0;
+  }
+
+  ngOnInit() {
+    this._selectionModel = new SelectionModel<MdOption>(this.multiple, null, false);
+    this.color = this.color || 'primary';
   }
 
   ngAfterContentInit() {
@@ -290,18 +366,35 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     if (this.disabled || !this.options.length) {
       return;
     }
+
+    if (!this._triggerWidth) {
+      this._setTriggerWidth();
+    }
+
     this._calculateOverlayPosition();
     this._placeholderState = this._floatPlaceholderState();
     this._panelOpen = true;
+    this._scrollSubscription = this._scrollDispatcher.scrolled(0, () => {
+      this.overlayDir.overlayRef.updatePosition();
+    });
   }
 
   /** Closes the overlay panel and focuses the host element. */
   close(): void {
-    this._panelOpen = false;
-    if (!this._selected) {
-      this._placeholderState = '';
+    if (this._panelOpen) {
+      this._panelOpen = false;
+
+      if (this._selectionModel.isEmpty()) {
+        this._placeholderState = '';
+      }
+
+      if (this._scrollSubscription) {
+        this._scrollSubscription.unsubscribe();
+        this._scrollSubscription = null;
+      }
+
+      this._focusHost();
     }
-    this._focusHost();
   }
 
   /**
@@ -313,7 +406,6 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   writeValue(value: any): void {
     if (this.options) {
       this._setSelectionByValue(value);
-      this._changeDetectorRef.markForCheck();
     }
   }
 
@@ -355,25 +447,61 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   }
 
   /** The currently selected option. */
-  get selected(): MdOption {
-    return this._selected;
+  get selected(): MdOption | MdOption[] {
+    return this.multiple ? this._selectionModel.selected : this._selectionModel.selected[0];
   }
 
+  /** The value displayed in the trigger. */
+  get triggerValue(): string {
+    if (this._multiple) {
+      let selectedOptions = this._selectionModel.selected.map(option => option.viewValue);
+
+      if (this._isRtl()) {
+        selectedOptions.reverse();
+      }
+
+      // TODO(crisbeto): delimiter should be configurable for proper localization.
+      return selectedOptions.join(', ');
+    }
+
+    return this._selectionModel.selected[0].viewValue;
+  }
+
+  /** Whether the element is in RTL mode. */
   _isRtl(): boolean {
     return this._dir ? this._dir.value === 'rtl' : false;
   }
 
-  /** The width of the trigger element. This is necessary to match
+  /**
+   * Sets the width of the trigger element. This is necessary to match
    * the overlay width to the trigger width.
    */
-  _getWidth(): number {
-    return this._getTriggerRect().width;
+  private _setTriggerWidth(): void {
+    this._triggerWidth = this._getTriggerRect().width;
   }
 
   /** Ensures the panel opens if activated by the keyboard. */
   _handleKeydown(event: KeyboardEvent): void {
     if (event.keyCode === ENTER || event.keyCode === SPACE) {
       this.open();
+    } else if (!this.disabled) {
+      let prevActiveItem = this._keyManager.activeItem;
+
+      // Cycle though the select options even when the select is closed,
+      // matching the behavior of the native select element.
+      // TODO(crisbeto): native selects also cycle through the options with left/right arrows,
+      // however the key manager only supports up/down at the moment.
+      this._keyManager.onKeydown(event);
+
+      let currentActiveItem = this._keyManager.activeItem as MdOption;
+
+      if (this._multiple) {
+        this.open();
+      } else if (currentActiveItem !== prevActiveItem) {
+        this._clearSelection();
+        this._setSelectionByValue(currentActiveItem.value);
+        this._propagateChanges();
+      }
     }
   }
 
@@ -387,6 +515,8 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
       this.onOpen.emit();
     } else {
       this.onClose.emit();
+      this._panelDoneAnimating = false;
+      this.overlayDir.offsetX = 0;
     }
   }
 
@@ -408,18 +538,20 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     }
   }
 
-  /** Returns the correct tabindex for the select depending on disabled state. */
-  _getTabIndex() {
-    return this.disabled ? '-1' : '0';
+  /**
+   * Callback that is invoked when the overlay panel has been attached.
+   */
+  _onAttached(): void {
+    this._calculateOverlayOffsetX();
+    this._setScrollTop();
   }
-
 
   /**
    * Sets the scroll position of the scroll container. This must be called after
    * the overlay pane is attached or the scroll container element will not yet be
    * present in the DOM.
    */
-  _setScrollTop(): void {
+  private _setScrollTop(): void {
     const scrollContainer =
         this.overlayDir.overlayRef.overlayElement.querySelector('.mat-select-panel');
     scrollContainer.scrollTop = this._scrollTop;
@@ -429,24 +561,58 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
    * Sets the selected option based on a value. If no option can be
    * found with the designated value, the select trigger is cleared.
    */
-  private _setSelectionByValue(value: any): void {
-    const options = this.options.toArray();
+  private _setSelectionByValue(value: any | any[]): void {
+    const isArray = Array.isArray(value);
 
-    for (let i = 0; i < this.options.length; i++) {
-      if (options[i].value === value) {
-        options[i].select();
-        return;
-      }
+    if (this.multiple && value && !isArray) {
+      throw new MdSelectNonArrayValueError();
     }
 
-    // Clear selection if no item was selected.
-    this._clearSelection();
+    if (isArray) {
+      this._clearSelection();
+      value.forEach((currentValue: any) => this._selectValue(currentValue));
+      this._sortValues();
+    } else if (!this._selectValue(value)) {
+      this._clearSelection();
+    }
+
+    this._setValueWidth();
+
+    if (this._selectionModel.isEmpty()) {
+      this._placeholderState = '';
+    }
+
+    this._changeDetectorRef.markForCheck();
   }
 
-  /** Clears the select trigger and deselects every option in the list. */
-  private _clearSelection(): void {
-    this._selected = null;
-    this._updateOptions();
+  /**
+   * Finds and selects and option based on its value.
+   * @returns Option that has the corresponding value.
+   */
+  private _selectValue(value: any): MdOption {
+    let optionsArray = this.options.toArray();
+    let correspondingOption = optionsArray.find(option => option.value === value);
+
+    if (correspondingOption) {
+      correspondingOption.select();
+      this._selectionModel.select(correspondingOption);
+      this._keyManager.setActiveItem(optionsArray.indexOf(correspondingOption));
+    }
+
+    return correspondingOption;
+  }
+
+  /**
+   * Clears the select trigger and deselects every option in the list.
+   * @param skip Option that should not be deselected.
+   */
+  private _clearSelection(skip?: MdOption): void {
+    this._selectionModel.clear();
+    this.options.forEach(option => {
+      if (option !== skip) {
+        option.deselect();
+      }
+    });
   }
 
   private _getTriggerRect(): ClientRect {
@@ -456,9 +622,7 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
   /** Sets up a key manager to listen to keyboard events on the overlay panel. */
   private _initKeyManager() {
     this._keyManager = new FocusKeyManager(this.options);
-    this._tabSubscription = this._keyManager.tabOut.subscribe(() => {
-      this.close();
-    });
+    this._tabSubscription = this._keyManager.tabOut.subscribe(() => this.close());
   }
 
   /** Drops current option subscriptions and IDs and resets from scratch. */
@@ -466,31 +630,73 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     this._dropSubscriptions();
     this._listenToOptions();
     this._setOptionIds();
+    this._setOptionMultiple();
   }
 
-  /** Listens to selection events on each option. */
+  /** Listens to user-generated selection events on each option. */
   private _listenToOptions(): void {
-    this.options.forEach((option: MdOption) => {
-      const sub = option.onSelect.subscribe((event: MdOptionSelectEvent) => {
-        if (event.isUserInput && this._selected !== option) {
-          this._emitChangeEvent(option);
+    this._optionSubscription = this.optionSelectionChanges
+      .filter(event => event.isUserInput)
+      .subscribe(event => {
+        this._onSelect(event.source);
+        this._setValueWidth();
+
+        if (!this.multiple) {
+          this.close();
         }
-        this._onSelect(option);
       });
-      this._subscriptions.push(sub);
-    });
+  }
+
+  /** Invoked when an option is clicked. */
+  private _onSelect(option: MdOption): void {
+    const wasSelected = this._selectionModel.isSelected(option);
+
+    if (this.multiple) {
+      this._selectionModel.toggle(option);
+      wasSelected ? option.deselect() : option.select();
+      this._sortValues();
+    } else {
+      this._clearSelection(option);
+      this._selectionModel.select(option);
+    }
+
+    if (wasSelected !== this._selectionModel.isSelected(option)) {
+      this._propagateChanges();
+    }
+  }
+
+  /**
+   * Sorts the model values, ensuring that they keep the same
+   * order that they have in the panel.
+   */
+  private _sortValues(): void {
+    if (this._multiple) {
+      this._selectionModel.clear();
+
+      this.options.forEach(option => {
+        if (option.selected) {
+          this._selectionModel.select(option);
+        }
+      });
+    }
   }
 
   /** Unsubscribes from all option subscriptions. */
   private _dropSubscriptions(): void {
-    this._subscriptions.forEach((sub: Subscription) => sub.unsubscribe());
-    this._subscriptions = [];
+    if (this._optionSubscription) {
+      this._optionSubscription.unsubscribe();
+      this._optionSubscription = null;
+    }
   }
 
-  /** Emits an event when the user selects an option. */
-  private _emitChangeEvent(option: MdOption): void {
-    this._onChange(option.value);
-    this.change.emit(new MdSelectChange(this, option.value));
+  /** Emits change event to set the model value. */
+  private _propagateChanges(): void {
+    let valueToEmit = Array.isArray(this.selected) ?
+      this.selected.map(option => option.value) :
+      this.selected.value;
+
+    this._onChange(valueToEmit);
+    this.change.emit(new MdSelectChange(this, valueToEmit));
   }
 
   /** Records option IDs to pass to the aria-owns property. */
@@ -498,24 +704,16 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     this._optionIds = this.options.map(option => option.id).join(' ');
   }
 
-  /** When a new option is selected, deselects the others and closes the panel. */
-  private _onSelect(option: MdOption): void {
-    this._selected = option;
-    this._updateOptions();
-    this._setValueWidth();
-    this._placeholderState = '';
-    if (this.panelOpen) {
-      this.close();
+  /**
+   * Sets the `multiple` property on each option. The promise is necessary
+   * in order to avoid Angular errors when modifying the property after init.
+   */
+  private _setOptionMultiple() {
+    if (this.multiple) {
+      Promise.resolve(null).then(() => {
+        this.options.forEach(option => option.multiple = this.multiple);
+      });
     }
-  }
-
-  /** Deselect each option that doesn't match the current selection. */
-  private _updateOptions(): void {
-    this.options.forEach((option: MdOption) => {
-      if (option !== this.selected) {
-        option.deselect();
-      }
-    });
   }
 
   /**
@@ -527,20 +725,21 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     this._selectedValueWidth =  this._triggerWidth - 13;
   }
 
-  /** Focuses the selected item. If no option is selected, it will focus
+  /**
+   * Focuses the selected item. If no option is selected, it will focus
    * the first item instead.
    */
   private _focusCorrectOption(): void {
-    if (this.selected) {
-      this._keyManager.setActiveItem(this._getOptionIndex(this.selected));
-    } else {
+    if (this._selectionModel.isEmpty()) {
       this._keyManager.setFirstItemActive();
+    } else {
+      this._keyManager.setActiveItem(this._getOptionIndex(this._selectionModel.selected[0]));
     }
   }
 
   /** Focuses the host element when the panel closes. */
   private _focusHost(): void {
-    this._renderer.invokeElementMethod(this._element.nativeElement, 'focus');
+    this._element.nativeElement.focus();
   }
 
   /** Gets the index of the provided option in the option list. */
@@ -552,8 +751,6 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
 
   /** Calculates the scroll position and x- and y-offsets of the overlay panel. */
   private _calculateOverlayPosition(): void {
-    this._offsetX = this._isRtl() ? SELECT_PANEL_PADDING_X : -SELECT_PANEL_PADDING_X;
-
     const panelHeight =
         Math.min(this.options.length * SELECT_OPTION_HEIGHT, SELECT_PANEL_MAX_HEIGHT);
     const scrollContainerHeight = this.options.length * SELECT_OPTION_HEIGHT;
@@ -561,13 +758,13 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     // The farthest the panel can be scrolled before it hits the bottom
     const maxScroll = scrollContainerHeight - panelHeight;
 
-    if (this.selected) {
-      const selectedIndex = this._getOptionIndex(this.selected);
+    if (this._selectionModel.hasValue()) {
+      const selectedIndex = this._getOptionIndex(this._selectionModel.selected[0]);
       // We must maintain a scroll buffer so the selected option will be scrolled to the
       // center of the overlay panel rather than the top.
       const scrollBuffer = panelHeight / 2;
       this._scrollTop = this._calculateOverlayScroll(selectedIndex, scrollBuffer, maxScroll);
-      this._offsetY = this._calculateOverlayOffset(selectedIndex, scrollBuffer, maxScroll);
+      this._offsetY = this._calculateOverlayOffsetY(selectedIndex, scrollBuffer, maxScroll);
     } else {
       // If no option is selected, the panel centers on the first option. In this case,
       // we must only adjust for the height difference between the option element
@@ -618,7 +815,49 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
    * Determines the CSS `visibility` of the placeholder element.
    */
   _getPlaceholderVisibility(): 'visible'|'hidden' {
-    return (this.floatPlaceholder !== 'never' || !this.selected) ? 'visible' : 'hidden';
+    return (this.floatPlaceholder !== 'never' || this._selectionModel.isEmpty()) ?
+        'visible' : 'hidden';
+  }
+
+  /** Returns the aria-label of the select component. */
+  get _ariaLabel(): string {
+    // If an ariaLabelledby value has been set, the select should not overwrite the
+    // `aria-labelledby` value by setting the ariaLabel to the placeholder.
+    return this.ariaLabelledby ? null : this.ariaLabel || this.placeholder;
+  }
+
+  /**
+   * Sets the x-offset of the overlay panel in relation to the trigger's top start corner.
+   * This must be adjusted to align the selected option text over the trigger text when
+   * the panel opens. Will change based on LTR or RTL text direction. Note that the offset
+   * can't be calculated until the panel has been attached, because we need to know the
+   * content width in order to constrain the panel within the viewport.
+   */
+  private _calculateOverlayOffsetX(): void {
+    const overlayRect = this.overlayDir.overlayRef.overlayElement.getBoundingClientRect();
+    const viewportRect = this._viewportRuler.getViewportRect();
+    const isRtl = this._isRtl();
+    let offsetX = this.multiple ? SELECT_MULTIPLE_PANEL_PADDING_X : SELECT_PANEL_PADDING_X;
+
+    if (!isRtl) {
+      offsetX *= -1;
+    }
+
+    const leftOverflow = 0 - (overlayRect.left + offsetX
+        - (isRtl ? SELECT_PANEL_PADDING_X * 2 : 0));
+    const rightOverflow = overlayRect.right + offsetX - viewportRect.width
+        + (isRtl ? 0 : SELECT_PANEL_PADDING_X * 2);
+
+    if (leftOverflow > 0) {
+      offsetX += leftOverflow + SELECT_PANEL_VIEWPORT_PADDING;
+    } else if (rightOverflow > 0) {
+      offsetX -= rightOverflow + SELECT_PANEL_VIEWPORT_PADDING;
+    }
+
+    // Set the offset directly in order to avoid having to go through change detection and
+    // potentially triggering "changed after it was checked" errors.
+    this.overlayDir.offsetX = offsetX;
+    this.overlayDir.overlayRef.updatePosition();
   }
 
   /**
@@ -626,7 +865,7 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
    * top start corner of the trigger. It has to be adjusted in order for the
    * selected option to be aligned over the trigger when the panel opens.
    */
-  private _calculateOverlayOffset(selectedIndex: number, scrollBuffer: number,
+  private _calculateOverlayOffsetY(selectedIndex: number, scrollBuffer: number,
                                   maxScroll: number): number {
     let optionOffsetFromPanelTop: number;
 
@@ -672,7 +911,7 @@ export class MdSelect implements AfterContentInit, ControlValueAccessor, OnDestr
     const panelHeightTop = Math.abs(this._offsetY);
     const totalPanelHeight =
         Math.min(this.options.length * SELECT_OPTION_HEIGHT, SELECT_PANEL_MAX_HEIGHT);
-    const panelHeightBottom = totalPanelHeight -  panelHeightTop - triggerRect.height;
+    const panelHeightBottom = totalPanelHeight - panelHeightTop - triggerRect.height;
 
     if (panelHeightBottom > bottomSpaceAvailable) {
       this._adjustPanelUp(panelHeightBottom, bottomSpaceAvailable);

@@ -5,8 +5,14 @@ import {MdSnackBar} from './snack-bar';
 import {MdSnackBarContainer} from './snack-bar-container';
 import {SimpleSnackBar} from './simple-snack-bar';
 
+
 @NgModule({
-  imports: [OverlayModule, PortalModule, CommonModule, CompatibilityModule],
+  imports: [
+    OverlayModule,
+    PortalModule,
+    CommonModule,
+    CompatibilityModule,
+  ],
   exports: [MdSnackBarContainer, CompatibilityModule],
   declarations: [MdSnackBarContainer, SimpleSnackBar],
   entryComponents: [MdSnackBarContainer, SimpleSnackBar],
@@ -21,6 +27,7 @@ export class MdSnackBarModule {
     };
   }
 }
+
 
 export * from './snack-bar';
 export * from './snack-bar-container';

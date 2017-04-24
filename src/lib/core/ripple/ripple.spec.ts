@@ -1,9 +1,11 @@
 import {TestBed, ComponentFixture, fakeAsync, tick, inject} from '@angular/core/testing';
 import {Component, ViewChild} from '@angular/core';
-import {MdRipple, MdRippleModule} from './ripple';
 import {ViewportRuler} from '../overlay/position/viewport-ruler';
 import {RIPPLE_FADE_OUT_DURATION, RIPPLE_FADE_IN_DURATION} from './ripple-renderer';
 import {dispatchMouseEvent} from '../testing/dispatch-events';
+import {
+  MdRipple, MdRippleModule, MD_RIPPLE_GLOBAL_OPTIONS, RippleState, RippleGlobalOptions
+} from './index';
 
 /** Extracts the numeric value of a pixel size string like '123px'.  */
 const pxStringToFloat = (s: string) => {
@@ -18,7 +20,7 @@ describe('MdRipple', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [MdRippleModule.forRoot()],
+      imports: [MdRippleModule],
       declarations: [
         BasicRippleContainer,
         RippleContainerWithInputBindings,
@@ -74,6 +76,39 @@ describe('MdRipple', () => {
       // Calculates the duration for fading-in and fading-out the ripple.
       tick(RIPPLE_FADE_IN_DURATION + RIPPLE_FADE_OUT_DURATION);
 
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
+
+    it('should remove ripples after mouseup', fakeAsync(() => {
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      // Fakes the duration of fading-in and fading-out normal ripples.
+      // The fade-out duration has been added to ensure that didn't start fading out.
+      tick(RIPPLE_FADE_IN_DURATION + RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
+
+    it('should not hide ripples while animating.', fakeAsync(() => {
+      // Calculates the duration for fading-in and fading-out the ripple.
+      let hideDuration = RIPPLE_FADE_IN_DURATION + RIPPLE_FADE_OUT_DURATION;
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      tick(hideDuration - 10);
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      tick(10);
       expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
     }));
 
@@ -236,6 +271,161 @@ describe('MdRipple', () => {
         expect(pxStringToFloat(ripple.style.height)).toBeCloseTo(2 * expectedRadius, 1);
       });
     });
+
+  });
+
+  describe('manual ripples', () => {
+    let rippleDirective: MdRipple;
+
+    beforeEach(() => {
+      fixture = TestBed.createComponent(BasicRippleContainer);
+      fixture.detectChanges();
+
+      rippleTarget = fixture.nativeElement.querySelector('[mat-ripple]');
+      rippleDirective = fixture.componentInstance.ripple;
+    });
+
+    it('should allow persistent ripple elements', fakeAsync(() => {
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+      let rippleRef = rippleDirective.launch(0, 0, { persistent: true });
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      // Calculates the duration for fading-in and fading-out the ripple. Also adds some
+      // extra time to demonstrate that the ripples are persistent.
+      tick(RIPPLE_FADE_IN_DURATION + RIPPLE_FADE_OUT_DURATION + 5000);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      rippleRef.fadeOut();
+
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
+
+   it('should remove ripples that are not done fading-in', fakeAsync(() => {
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+      rippleDirective.launch(0, 0);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      tick(RIPPLE_FADE_IN_DURATION / 2);
+
+      rippleDirective.fadeOutAll();
+
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length)
+        .toBe(0, 'Expected no ripples to be active after calling fadeOutAll.');
+    }));
+
+   it('should properly set ripple states', fakeAsync(() => {
+     expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+     let rippleRef = rippleDirective.launch(0, 0, { persistent: true });
+
+     expect(rippleRef.state).toBe(RippleState.FADING_IN);
+     expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+     tick(RIPPLE_FADE_IN_DURATION);
+
+     expect(rippleRef.state).toBe(RippleState.VISIBLE);
+     expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+     rippleRef.fadeOut();
+
+     expect(rippleRef.state).toBe(RippleState.FADING_OUT);
+     expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+     tick(RIPPLE_FADE_OUT_DURATION);
+
+     expect(rippleRef.state).toBe(RippleState.HIDDEN);
+     expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+   }));
+
+  });
+
+  describe('global ripple options', () => {
+    let rippleDirective: MdRipple;
+
+    function createTestComponent(rippleConfig: RippleGlobalOptions) {
+      // Reset the previously configured testing module to be able set new providers.
+      // The testing module has been initialized in the root describe group for the ripples.
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [MdRippleModule],
+        declarations: [BasicRippleContainer],
+        providers: [{ provide: MD_RIPPLE_GLOBAL_OPTIONS, useValue: rippleConfig }]
+      });
+
+      fixture = TestBed.createComponent(BasicRippleContainer);
+      fixture.detectChanges();
+
+      rippleTarget = fixture.nativeElement.querySelector('[mat-ripple]');
+      rippleDirective = fixture.componentInstance.ripple;
+    }
+
+    it('when disabled should not show any ripples on mousedown', () => {
+      createTestComponent({ disabled: true });
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    });
+
+    it('when disabled should still allow manual ripples', () => {
+      createTestComponent({ disabled: true });
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+      rippleDirective.launch(0, 0);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+    });
+
+    it('should support changing the baseSpeedFactor', fakeAsync(() => {
+      createTestComponent({ baseSpeedFactor: 0.5 });
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      // Calculates the speedFactor for the duration. Those factors needs to be inverted, because
+      // a lower speed factor, will make the duration longer. For example: 0.5 => 2x duration.
+      let fadeInFactor = 1 / 0.5;
+
+      // Calculates the duration for fading-in and fading-out the ripple.
+      tick(RIPPLE_FADE_IN_DURATION * fadeInFactor + RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
+
+    it('should combine individual speed factor with baseSpeedFactor', fakeAsync(() => {
+      createTestComponent({ baseSpeedFactor: 0.5 });
+
+      rippleDirective.launch(0, 0, { speedFactor: 1.5 });
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      // Calculates the speedFactor for the duration. Those factors needs to be inverted, because
+      // a lower speed factor, will make the duration longer. For example: 0.5 => 2x duration.
+      let fadeInFactor = 1 / (0.5 * 1.5);
+
+      // Calculates the duration for fading-in and fading-out the ripple.
+      tick(RIPPLE_FADE_IN_DURATION * fadeInFactor + RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
 
   });
 
