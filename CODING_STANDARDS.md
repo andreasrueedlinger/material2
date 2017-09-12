@@ -43,6 +43,8 @@ use `//` style comments for everything else (explanations, background info, etc.
 
 In SCSS code, always use `//` style comments.
 
+In HTML code, use `<!-- ... -->` comments, which will be stripped when packaging a build.
+
 #### Prefer more focused, granular components vs. complex, configurable components.
 
 For example, rather than doing this:
@@ -124,6 +126,34 @@ class ConfigBuilder {
 }
 ```
 
+#### RxJS
+When dealing with RxJS operators, import the operator functions directly (e.g.
+`import "rxjs/operator/map"`), as opposed to using the "patch" imports which pollute the user's
+global Observable object (e.g. `import "rxjs/add/operator/map"`):
+
+```ts
+// NO
+import 'rxjs/add/operator/map';
+someObservable.map(...).subscribe(...);
+
+// YES
+import {map} from 'rxjs/operator/map';
+map.call(someObservable, ...).subscribe(...);
+```
+
+Note that this approach can be inflexible when dealing with long chains of operators. You can use
+the `RxChain` class to help with it:
+
+```ts
+// Before
+someObservable.filter(...).map(...).do(...);
+
+// After
+RxChain.from(someObservable).call(filter, ...).call(map, ...).call(do, ...).subscribe(...);
+```
+Note that not all operators are available via the `RxChain`. If the operator that you need isn't
+declared, you can add it to `/core/rxjs/rx-operators.ts`.
+
 #### Access modifiers
 * Omit the `public` keyword as it is the default behavior.
 * Use `private` when appropriate and possible, prefixing the name with an underscore.
@@ -139,7 +169,7 @@ API docs.
 
 #### JsDoc comments
 
-All public APIs must have user-facing comments. These are extracted and shown in the documation
+All public APIs must have user-facing comments. These are extracted and shown in the documentation
 on [material.angular.io](https://material.angular.io).
 
 Private and internal APIs should have JsDoc when they are not obvious. Ultimately it is the purview
@@ -170,6 +200,13 @@ Boolean properties and return values should use "Whether..." as opposed to "True
   disabled: boolean = false;
 ```
 
+#### Try-Catch
+
+Avoid `try-catch` blocks, instead preferring to prevent an error from being thrown in the first
+place. When impossible to avoid, the `try-catch` block must include a comment that explains the
+specific error being caught and why it cannot be prevented.
+
+
 #### Naming
 
 ##### General
@@ -193,7 +230,8 @@ Avoid suffixing a class with "Service", as it communicates nothing about what th
 think of the class name as a person's job title.
 
 Classes that correspond to a directive with an `md-` prefix should also be prefixed with `Md`.
-CDK classes should not have a prefix.
+CDK classes should only have a `Cdk` prefix when the class is a directive with a `cdk` selector
+prefix.
 
 ##### Methods
 The name of a method should capture the action that is performed *by* that method rather than
@@ -213,8 +251,9 @@ activateRipple() {
 
 #### Inheritance
 
-Avoid using inheritence to apply reusable behaviors to multiple components. This limits how many
-behaviors can be composed.
+Avoid using inheritance to apply reusable behaviors to multiple components. This limits how many
+behaviors can be composed. Instead, [TypeScript mixins][ts-mixins] can be used to compose multiple
+common behaviors into a single component.
 
 ### Angular
 
@@ -279,7 +318,7 @@ This makes it easier to override styles when necessary. For example, rather than
 ```scss
 the-host-element {
   // ...
- 
+
   .some-child-element {
     color: red;
   }
@@ -318,3 +357,5 @@ When it is not super obvious, include a brief description of what a class repres
 // Portion of the floating panel that sits, invisibly, on top of the input.
 .mat-datepicker-input-mask { }
 ```
+
+[ts-mixins]: https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-2.html#support-for-mix-in-classes

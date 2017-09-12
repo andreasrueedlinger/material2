@@ -1,25 +1,27 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
+/**
+ * @license
+ * Copyright Google Inc. All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+
+import {NgModule} from '@angular/core';
 import {CommonModule} from '@angular/common';
-import {CompatibilityModule} from '../core';
-import {A11yModule} from '../core/a11y/index';
-import {OverlayModule} from '../core/overlay/overlay-directives';
+import {A11yModule} from '@angular/cdk/a11y';
+import {OverlayModule} from '@angular/cdk/overlay';
+import {MdCommonModule} from '../core';
+import {MdDrawer, MdDrawerContainer} from './drawer';
 import {MdSidenav, MdSidenavContainer} from './sidenav';
 
 
 @NgModule({
-  imports: [CommonModule, CompatibilityModule, A11yModule, OverlayModule],
-  exports: [MdSidenavContainer, MdSidenav, CompatibilityModule],
-  declarations: [MdSidenavContainer, MdSidenav],
+  imports: [CommonModule, MdCommonModule, A11yModule, OverlayModule],
+  exports: [MdDrawerContainer, MdDrawer, MdSidenavContainer, MdSidenav, MdCommonModule],
+  declarations: [MdDrawerContainer, MdDrawer, MdSidenavContainer, MdSidenav],
 })
-export class MdSidenavModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdSidenavModule,
-      providers: []
-    };
-  }
-}
+export class MdSidenavModule {}
 
 
+export * from './drawer';
 export * from './sidenav';

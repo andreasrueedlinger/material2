@@ -1,23 +1,25 @@
-import {async, ComponentFixture, TestBed, fakeAsync, tick} from '@angular/core/testing';
-import {Component, ViewChild, ViewContainerRef} from '@angular/core';
-import {LayoutDirection, Dir} from '../core/rtl/dir';
+import {
+  async, ComponentFixture, TestBed, fakeAsync, tick, discardPeriodicTasks
+} from '@angular/core/testing';
+import {Component, ViewChild} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {By} from '@angular/platform-browser';
+import {ENTER, LEFT_ARROW, RIGHT_ARROW, SPACE} from '@angular/cdk/keycodes';
+import {PortalModule} from '@angular/cdk/portal';
+import {ViewportRuler} from '@angular/cdk/scrolling';
+import {Direction, Directionality} from '@angular/cdk/bidi';
+import {dispatchFakeEvent, dispatchKeyboardEvent, FakeViewportRuler} from '@angular/cdk/testing';
 import {MdTabHeader} from './tab-header';
 import {MdRippleModule} from '../core/ripple/index';
-import {CommonModule} from '@angular/common';
-import {PortalModule} from '../core';
 import {MdInkBar} from './ink-bar';
 import {MdTabLabelWrapper} from './tab-label-wrapper';
-import {RIGHT_ARROW, LEFT_ARROW, ENTER} from '../core/keyboard/keycodes';
-import {FakeViewportRuler} from '../core/overlay/position/fake-viewport-ruler';
-import {ViewportRuler} from '../core/overlay/position/viewport-ruler';
-import {dispatchKeyboardEvent} from '../core/testing/dispatch-events';
-import {dispatchFakeEvent} from '../core/testing/dispatch-events';
 import {Subject} from 'rxjs/Subject';
 
 
+
 describe('MdTabHeader', () => {
-  let dir: LayoutDirection = 'ltr';
-  let dirChange = new Subject();
+  let dir: Direction = 'ltr';
+  let change = new Subject();
   let fixture: ComponentFixture<SimpleTabHeaderApp>;
   let appComponent: SimpleTabHeaderApp;
 
@@ -32,9 +34,7 @@ describe('MdTabHeader', () => {
         SimpleTabHeaderApp,
       ],
       providers: [
-        {provide: Dir, useFactory: () => {
-          return {value: dir,  dirChange: dirChange.asObservable()};
-        }},
+        {provide: Directionality, useFactory: () => ({value: dir, change: change.asObservable()})},
         {provide: ViewportRuler, useClass: FakeViewportRuler},
       ]
     });
@@ -120,14 +120,22 @@ describe('MdTabHeader', () => {
 
       // Select the focused index 2
       expect(appComponent.selectedIndex).toBe(0);
-      dispatchKeyboardEvent(tabListContainer, 'keydown', ENTER);
+      const enterEvent = dispatchKeyboardEvent(tabListContainer, 'keydown', ENTER);
       fixture.detectChanges();
       expect(appComponent.selectedIndex).toBe(2);
+      expect(enterEvent.defaultPrevented).toBe(true);
 
       // Move focus right to 0
       dispatchKeyboardEvent(tabListContainer, 'keydown', LEFT_ARROW);
       fixture.detectChanges();
       expect(appComponent.mdTabHeader.focusIndex).toBe(0);
+
+      // Select the focused 0 using space.
+      expect(appComponent.selectedIndex).toBe(2);
+      const spaceEvent = dispatchKeyboardEvent(tabListContainer, 'keydown', SPACE);
+      fixture.detectChanges();
+      expect(appComponent.selectedIndex).toBe(0);
+      expect(spaceEvent.defaultPrevented).toBe(true);
     });
   });
 
@@ -168,16 +176,54 @@ describe('MdTabHeader', () => {
         fixture.detectChanges();
         expect(appComponent.mdTabHeader.scrollDistance).toBe(0);
       });
+
+      it('should show ripples for pagination buttons', () => {
+        appComponent.addTabsForScrolling();
+        fixture.detectChanges();
+
+        expect(appComponent.mdTabHeader._showPaginationControls).toBe(true);
+
+        const buttonAfter = fixture.debugElement.query(By.css('.mat-tab-header-pagination-after'));
+
+        expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(0, 'Expected no ripple to show up initially.');
+
+        dispatchFakeEvent(buttonAfter.nativeElement, 'mousedown');
+        dispatchFakeEvent(buttonAfter.nativeElement, 'mouseup');
+
+        expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(1, 'Expected one ripple to show up after mousedown');
+      });
+
+      it('should allow disabling ripples for pagination buttons', () => {
+        appComponent.addTabsForScrolling();
+        appComponent.disableRipple = true;
+        fixture.detectChanges();
+
+        expect(appComponent.mdTabHeader._showPaginationControls).toBe(true);
+
+        const buttonAfter = fixture.debugElement.query(By.css('.mat-tab-header-pagination-after'));
+
+        expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(0, 'Expected no ripple to show up initially.');
+
+        dispatchFakeEvent(buttonAfter.nativeElement, 'mousedown');
+        dispatchFakeEvent(buttonAfter.nativeElement, 'mouseup');
+
+        expect(fixture.nativeElement.querySelectorAll('.mat-ripple-element').length)
+          .toBe(0, 'Expected no ripple to show up after mousedown');
+      });
+
     });
 
     describe('rtl', () => {
       beforeEach(() => {
         dir = 'rtl';
         fixture = TestBed.createComponent(SimpleTabHeaderApp);
-        fixture.detectChanges();
-
         appComponent = fixture.componentInstance;
         appComponent.dir = 'rtl';
+
+        fixture.detectChanges();
       });
 
       it('should scroll to show the focused tab label', () => {
@@ -200,13 +246,13 @@ describe('MdTabHeader', () => {
 
     it('should re-align the ink bar when the direction changes', () => {
       fixture = TestBed.createComponent(SimpleTabHeaderApp);
-      fixture.detectChanges();
 
       const inkBar = fixture.componentInstance.mdTabHeader._inkBar;
-
       spyOn(inkBar, 'alignToElement');
 
-      dirChange.next();
+      fixture.detectChanges();
+
+      change.next();
       fixture.detectChanges();
 
       expect(inkBar.alignToElement).toHaveBeenCalled();
@@ -221,10 +267,26 @@ describe('MdTabHeader', () => {
       spyOn(inkBar, 'alignToElement');
 
       dispatchFakeEvent(window, 'resize');
-      tick(10);
+      tick(150);
       fixture.detectChanges();
 
       expect(inkBar.alignToElement).toHaveBeenCalled();
+      discardPeriodicTasks();
+    }));
+
+    it('should update arrows when the window is resized', fakeAsync(() => {
+      fixture = TestBed.createComponent(SimpleTabHeaderApp);
+
+      const header = fixture.componentInstance.mdTabHeader;
+
+      spyOn(header, '_checkPaginationEnabled');
+
+      dispatchFakeEvent(window, 'resize');
+      tick(10);
+      fixture.detectChanges();
+
+      expect(header._checkPaginationEnabled).toHaveBeenCalled();
+      discardPeriodicTasks();
     }));
 
   });
@@ -238,10 +300,10 @@ interface Tab {
 @Component({
   template: `
   <div [dir]="dir">
-    <md-tab-header [selectedIndex]="selectedIndex"
+    <md-tab-header [selectedIndex]="selectedIndex" [disableRipple]="disableRipple"
                (indexFocused)="focusedIndex = $event"
                (selectFocusedIndex)="selectedIndex = $event">
-      <div md-tab-label-wrapper style="min-width: 30px; width: 30px"
+      <div mdTabLabelWrapper style="min-width: 30px; width: 30px"
            *ngFor="let tab of tabs; let i = index"
            [disabled]="!!tab.disabled"
            (click)="selectedIndex = i">
@@ -257,15 +319,16 @@ interface Tab {
   `]
 })
 class SimpleTabHeaderApp {
+  disableRipple: boolean = false;
   selectedIndex: number = 0;
   focusedIndex: number;
   disabledTabIndex = 1;
   tabs: Tab[] = [{label: 'tab one'}, {label: 'tab one'}, {label: 'tab one'}, {label: 'tab one'}];
-  dir: LayoutDirection = 'ltr';
+  dir: Direction = 'ltr';
 
   @ViewChild(MdTabHeader) mdTabHeader: MdTabHeader;
 
-  constructor(private _viewContainerRef: ViewContainerRef) {
+  constructor() {
     this.tabs[this.disabledTabIndex].disabled = true;
   }
 

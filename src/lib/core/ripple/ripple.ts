@@ -1,3 +1,11 @@
+/**
+ * @license
+ * Copyright Google Inc. All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+
 import {
   Directive,
   ElementRef,
@@ -7,26 +15,28 @@ import {
   OnChanges,
   SimpleChanges,
   OnDestroy,
-  OpaqueToken,
+  InjectionToken,
   Optional,
 } from '@angular/core';
+import {ViewportRuler} from '@angular/cdk/scrolling';
+import {Platform} from '@angular/cdk/platform';
 import {RippleConfig, RippleRenderer} from './ripple-renderer';
-import {ViewportRuler} from '../overlay/position/viewport-ruler';
 import {RippleRef} from './ripple-ref';
 
-/** OpaqueToken that can be used to specify the global ripple options. */
-export const MD_RIPPLE_GLOBAL_OPTIONS = new OpaqueToken('md-ripple-global-options');
-
-export type RippleGlobalOptions = {
+export interface RippleGlobalOptions {
   disabled?: boolean;
   baseSpeedFactor?: number;
-};
+}
+
+/** Injection token that can be used to specify the global ripple options. */
+export const MD_RIPPLE_GLOBAL_OPTIONS =
+    new InjectionToken<RippleGlobalOptions>('md-ripple-global-options');
 
 @Directive({
   selector: '[md-ripple], [mat-ripple], [mdRipple], [matRipple]',
   exportAs: 'mdRipple',
   host: {
-    '[class.mat-ripple]': 'true',
+    'class': 'mat-ripple',
     '[class.mat-ripple-unbounded]': 'unbounded'
   }
 })
@@ -47,8 +57,8 @@ export class MdRipple implements OnChanges, OnDestroy {
   @Input('mdRippleCentered') centered: boolean;
 
   /**
-   * Whether click events will not trigger the ripple. It can still be triggered by manually
-   * calling createRipple()
+   * Whether click events will not trigger the ripple. Ripples can be still launched manually
+   * by using the `launch()` method.
    */
   @Input('mdRippleDisabled') disabled: boolean;
 
@@ -72,6 +82,41 @@ export class MdRipple implements OnChanges, OnDestroy {
   /** Whether foreground ripples should be visible outside the component's bounds. */
   @Input('mdRippleUnbounded') unbounded: boolean;
 
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleTrigger')
+  get _matRippleTrigger() { return this.trigger; }
+  set _matRippleTrigger(v) { this.trigger = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleCentered')
+  get _matRippleCentered() { return this.centered; }
+  set _matRippleCentered(v) { this.centered = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleDisabled')
+  get _matRippleDisabled() { return this.disabled; }
+  set _matRippleDisabled(v) { this.disabled = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleRadius')
+  get _matRippleRadius() { return this.radius; }
+  set _matRippleRadius(v) { this.radius = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleSpeedFactor')
+  get _matRippleSpeedFactor() { return this.speedFactor; }
+  set _matRippleSpeedFactor(v) { this.speedFactor = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleColor')
+  get _matRippleColor() { return this.color; }
+  set _matRippleColor(v) { this.color = v; }
+
+  // Properties with `mat-` prefix for noconflict mode.
+  @Input('matRippleUnbounded')
+  get _matRippleUnbounded() { return this.unbounded; }
+  set _matRippleUnbounded(v) { this.unbounded = v; }
+
   /** Renderer for the ripple DOM manipulations. */
   private _rippleRenderer: RippleRenderer;
 
@@ -82,11 +127,13 @@ export class MdRipple implements OnChanges, OnDestroy {
     elementRef: ElementRef,
     ngZone: NgZone,
     ruler: ViewportRuler,
-    // Type needs to be `any` because of https://github.com/angular/angular/issues/12631
-    @Optional() @Inject(MD_RIPPLE_GLOBAL_OPTIONS) globalOptions: any
+    platform: Platform,
+    @Optional() @Inject(MD_RIPPLE_GLOBAL_OPTIONS) globalOptions: RippleGlobalOptions
   ) {
-    this._rippleRenderer = new RippleRenderer(elementRef, ngZone, ruler);
+    this._rippleRenderer = new RippleRenderer(elementRef, ngZone, ruler, platform);
     this._globalOptions = globalOptions ? globalOptions : {};
+
+    this._updateRippleRenderer();
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -94,8 +141,7 @@ export class MdRipple implements OnChanges, OnDestroy {
       this._rippleRenderer.setTriggerElement(this.trigger);
     }
 
-    this._rippleRenderer.rippleDisabled = this._globalOptions.disabled || this.disabled;
-    this._rippleRenderer.rippleConfig = this.rippleConfig;
+    this._updateRippleRenderer();
   }
 
   ngOnDestroy() {
@@ -121,5 +167,11 @@ export class MdRipple implements OnChanges, OnDestroy {
       radius: this.radius,
       color: this.color
     };
+  }
+
+  /** Updates the ripple renderer with the latest ripple configuration. */
+  _updateRippleRenderer() {
+    this._rippleRenderer.rippleDisabled = this._globalOptions.disabled || this.disabled;
+    this._rippleRenderer.rippleConfig = this.rippleConfig;
   }
 }

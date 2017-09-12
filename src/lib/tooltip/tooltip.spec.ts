@@ -1,47 +1,57 @@
 import {
   async,
   ComponentFixture,
-  TestBed,
-  tick,
   fakeAsync,
-  flushMicrotasks
+  flushMicrotasks,
+  TestBed,
+  tick
 } from '@angular/core/testing';
 import {
+  ChangeDetectionStrategy,
   Component,
   DebugElement,
-  ViewChild,
-  ChangeDetectionStrategy
+  ElementRef,
+  ViewChild
 } from '@angular/core';
 import {AnimationEvent} from '@angular/animations';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {TooltipPosition, MdTooltip, MdTooltipModule, SCROLL_THROTTLE_MS} from './index';
-import {OverlayContainer} from '../core';
-import {Dir, LayoutDirection} from '../core/rtl/dir';
-import {OverlayModule} from '../core/overlay/overlay-directives';
-import {Platform} from '../core/platform/platform';
-import {Scrollable} from '../core/overlay/scroll/scrollable';
-import {dispatchFakeEvent} from '../core/testing/dispatch-events';
+import {Direction, Directionality} from '@angular/cdk/bidi';
+import {OverlayContainer, OverlayModule, Scrollable} from '@angular/cdk/overlay';
+import {Platform} from '@angular/cdk/platform';
+import {dispatchFakeEvent} from '@angular/cdk/testing';
+import {
+  MdTooltip,
+  MdTooltipModule,
+  SCROLL_THROTTLE_MS,
+  TOOLTIP_PANEL_CLASS,
+  TooltipPosition
+} from './index';
 
 
 const initialTooltipMessage = 'initial tooltip message';
 
 describe('MdTooltip', () => {
   let overlayContainerElement: HTMLElement;
-  let dir: {value: LayoutDirection};
+  let dir: {value: Direction};
 
   beforeEach(async(() => {
     TestBed.configureTestingModule({
-      imports: [MdTooltipModule.forRoot(), OverlayModule, NoopAnimationsModule],
-      declarations: [BasicTooltipDemo, ScrollableTooltipDemo, OnPushTooltipDemo],
+      imports: [MdTooltipModule, OverlayModule, NoopAnimationsModule],
+      declarations: [
+        BasicTooltipDemo,
+        ScrollableTooltipDemo,
+        OnPushTooltipDemo,
+        DynamicTooltipsDemo
+      ],
       providers: [
-        {provide: Platform, useValue: {IOS: false}},
+        {provide: Platform, useValue: {IOS: false, isBrowser: true}},
         {provide: OverlayContainer, useFactory: () => {
           overlayContainerElement = document.createElement('div');
           document.body.appendChild(overlayContainerElement);
           return {getContainerElement: () => overlayContainerElement};
         }},
-        {provide: Dir, useFactory: () => {
+        {provide: Directionality, useFactory: () => {
           return dir = { value: 'ltr' };
         }}
       ]
@@ -49,6 +59,10 @@ describe('MdTooltip', () => {
 
     TestBed.compileComponents();
   }));
+
+  afterEach(() => {
+    document.body.removeChild(overlayContainerElement);
+  });
 
   describe('basic usage', () => {
     let fixture: ComponentFixture<BasicTooltipDemo>;
@@ -61,7 +75,7 @@ describe('MdTooltip', () => {
       fixture.detectChanges();
       buttonDebugElement = fixture.debugElement.query(By.css('button'));
       buttonElement = <HTMLButtonElement> buttonDebugElement.nativeElement;
-      tooltipDirective = buttonDebugElement.injector.get(MdTooltip);
+      tooltipDirective = buttonDebugElement.injector.get<MdTooltip>(MdTooltip);
     });
 
     it('should show and hide the tooltip', fakeAsync(() => {
@@ -113,6 +127,18 @@ describe('MdTooltip', () => {
       expect(overlayContainerElement.textContent).toContain(initialTooltipMessage);
     }));
 
+    it('should set a css class on the overlay panel element', fakeAsync(() => {
+      tooltipDirective.show();
+      fixture.detectChanges();
+      tick(0);
+
+      const overlayRef = tooltipDirective._overlayRef;
+
+      expect(overlayRef).not.toBeNull();
+      expect(overlayRef!.overlayElement.classList).toContain(TOOLTIP_PANEL_CLASS,
+          'Expected the overlay panel element to have the tooltip panel class set.');
+    }));
+
     it('should not show if disabled', fakeAsync(() => {
       // Test that disabling the tooltip will not set the tooltip visible
       tooltipDirective.disabled = true;
@@ -162,12 +188,12 @@ describe('MdTooltip', () => {
     it('should not show tooltip if message is not present or empty', () => {
       expect(tooltipDirective._tooltipInstance).toBeUndefined();
 
-      tooltipDirective.message = undefined;
+      tooltipDirective.message = undefined!;
       fixture.detectChanges();
       tooltipDirective.show();
       expect(tooltipDirective._tooltipInstance).toBeUndefined();
 
-      tooltipDirective.message = null;
+      tooltipDirective.message = null!;
       fixture.detectChanges();
       tooltipDirective.show();
       expect(tooltipDirective._tooltipInstance).toBeUndefined();
@@ -224,7 +250,7 @@ describe('MdTooltip', () => {
 
       tooltipDirective.show();
       tick(0); // Tick for the show delay (default is 0)
-      expect(tooltipDirective._tooltipInstance._visibility).toBe('visible');
+      expect(tooltipDirective._tooltipInstance!._visibility).toBe('visible');
 
       fixture.detectChanges();
       expect(overlayContainerElement.textContent).toContain(initialTooltipMessage);
@@ -234,6 +260,32 @@ describe('MdTooltip', () => {
 
       fixture.detectChanges();
       expect(overlayContainerElement.textContent).toContain(newMessage);
+    }));
+
+    it('should allow extra classes to be set on the tooltip', fakeAsync(() => {
+      expect(tooltipDirective._tooltipInstance).toBeUndefined();
+
+      tooltipDirective.show();
+      tick(0); // Tick for the show delay (default is 0)
+      fixture.detectChanges();
+
+      // Make sure classes aren't prematurely added
+      let tooltipElement = overlayContainerElement.querySelector('.mat-tooltip') as HTMLElement;
+      expect(tooltipElement.classList).not.toContain('custom-one',
+        'Expected to not have the class before enabling mdTooltipClass');
+      expect(tooltipElement.classList).not.toContain('custom-two',
+        'Expected to not have the class before enabling mdTooltipClass');
+
+      // Enable the classes via ngClass syntax
+      fixture.componentInstance.showTooltipClass = true;
+      fixture.detectChanges();
+
+      // Make sure classes are correctly added
+      tooltipElement = overlayContainerElement.querySelector('.mat-tooltip') as HTMLElement;
+      expect(tooltipElement.classList).toContain('custom-one',
+        'Expected to have the class after enabling mdTooltipClass');
+      expect(tooltipElement.classList).toContain('custom-two',
+        'Expected to have the class after enabling mdTooltipClass');
     }));
 
     it('should be removed after parent destroyed', fakeAsync(() => {
@@ -246,6 +298,21 @@ describe('MdTooltip', () => {
       expect(overlayContainerElement.textContent).toBe('');
     }));
 
+    it('should have an aria-described element with the tooltip message', () => {
+      const dynamicTooltipsDemoFixture = TestBed.createComponent(DynamicTooltipsDemo);
+      const dynamicTooltipsComponent = dynamicTooltipsDemoFixture.componentInstance;
+
+      dynamicTooltipsComponent.tooltips = ['Tooltip One', 'Tooltip Two'];
+      dynamicTooltipsDemoFixture.detectChanges();
+
+      const buttons = dynamicTooltipsComponent.getButtons();
+      const firstButtonAria = buttons[0].getAttribute('aria-describedby');
+      expect(document.querySelector(`#${firstButtonAria}`)!.textContent).toBe('Tooltip One');
+
+      const secondButtonAria = buttons[1].getAttribute('aria-describedby');
+      expect(document.querySelector(`#${secondButtonAria}`)!.textContent).toBe('Tooltip Two');
+    });
+
     it('should not try to dispose the tooltip when destroyed and done hiding', fakeAsync(() => {
       tooltipDirective.show();
       fixture.detectChanges();
@@ -256,7 +323,7 @@ describe('MdTooltip', () => {
       tick(tooltipDelay); // Change the tooltip state to hidden and trigger animation start
 
       // Store the tooltip instance, which will be set to null after the button is hidden.
-      const tooltipInstance = tooltipDirective._tooltipInstance;
+      const tooltipInstance = tooltipDirective._tooltipInstance!;
       fixture.componentInstance.showButton = false;
       fixture.detectChanges();
 
@@ -315,31 +382,31 @@ describe('MdTooltip', () => {
     it('should have consistent left transform origin in any dir', () => {
       tooltipDirective.position = 'right';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('left');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('left');
 
       tooltipDirective.position = 'after';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('left');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('left');
 
       dir.value = 'rtl';
       tooltipDirective.position = 'before';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('left');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('left');
     });
 
     it('should have consistent right transform origin in any dir', () => {
       tooltipDirective.position = 'left';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('right');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('right');
 
       tooltipDirective.position = 'before';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('right');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('right');
 
       dir.value = 'rtl';
       tooltipDirective.position = 'after';
       tooltipDirective.show();
-      expect(tooltipDirective._tooltipInstance._transformOrigin).toBe('right');
+      expect(tooltipDirective._tooltipInstance!._transformOrigin).toBe('right');
     });
 
     it('should throw when trying to assign an invalid position', () => {
@@ -349,6 +416,26 @@ describe('MdTooltip', () => {
         tooltipDirective.show();
       }).toThrowError('Tooltip position "everywhere" is invalid.');
     });
+
+    it('should pass the layout direction to the tooltip', fakeAsync(() => {
+      dir.value = 'rtl';
+
+      tooltipDirective.show();
+      tick(0);
+      fixture.detectChanges();
+
+      const tooltipWrapper = overlayContainerElement.querySelector('.cdk-overlay-pane')!;
+
+      expect(tooltipWrapper).toBeTruthy('Expected tooltip to be shown.');
+      expect(tooltipWrapper.getAttribute('dir')).toBe('rtl', 'Expected tooltip to be in RTL mode.');
+    }));
+
+    it('should be able to set the tooltip message as a number', fakeAsync(() => {
+      fixture.componentInstance.message = 100;
+      fixture.detectChanges();
+
+      expect(tooltipDirective.message).toBe('100');
+    }));
   });
 
   describe('scrollable usage', () => {
@@ -362,7 +449,7 @@ describe('MdTooltip', () => {
       fixture.detectChanges();
       buttonDebugElement = fixture.debugElement.query(By.css('button'));
       buttonElement = <HTMLButtonElement> buttonDebugElement.nativeElement;
-      tooltipDirective = buttonDebugElement.injector.get(MdTooltip);
+      tooltipDirective = buttonDebugElement.injector.get<MdTooltip>(MdTooltip);
     });
 
     it('should hide tooltip if clipped after changing positions', fakeAsync(() => {
@@ -374,17 +461,21 @@ describe('MdTooltip', () => {
       tick(0);
 
       // Expect that the tooltip is displayed
-      expect(tooltipDirective._isTooltipVisible()).toBe(true);
+      expect(tooltipDirective._isTooltipVisible())
+          .toBe(true, 'Expected tooltip to be initially visible');
 
       // Scroll the page but tick just before the default throttle should update.
       fixture.componentInstance.scrollDown();
       tick(SCROLL_THROTTLE_MS - 1);
-      expect(tooltipDirective._isTooltipVisible()).toBe(true);
+      expect(tooltipDirective._isTooltipVisible())
+          .toBe(true, 'Expected tooltip to be visible when scrolling, before throttle limit');
 
       // Finish ticking to the throttle's limit and check that the scroll event notified the
       // tooltip and it was hidden.
-      tick(1);
-      expect(tooltipDirective._isTooltipVisible()).toBe(false);
+      tick(100);
+      fixture.detectChanges();
+      expect(tooltipDirective._isTooltipVisible())
+          .toBe(false, 'Expected tooltip hidden when scrolled out of view, after throttle limit');
     }));
   });
 
@@ -399,7 +490,7 @@ describe('MdTooltip', () => {
       fixture.detectChanges();
       buttonDebugElement = fixture.debugElement.query(By.css('button'));
       buttonElement = <HTMLButtonElement> buttonDebugElement.nativeElement;
-      tooltipDirective = buttonDebugElement.injector.get(MdTooltip);
+      tooltipDirective = buttonDebugElement.injector.get<MdTooltip>(MdTooltip);
     });
 
     it('should show and hide the tooltip', fakeAsync(() => {
@@ -444,14 +535,6 @@ describe('MdTooltip', () => {
     }));
   });
 
-  describe('destroy', () => {
-    it('does not throw an error on destroy', () => {
-      const fixture = TestBed.createComponent(BasicTooltipDemo);
-      fixture.detectChanges();
-      delete fixture.componentInstance.tooltip.scrollSubscription;
-      expect(fixture.destroy.bind(fixture)).not.toThrow();
-    });
-  });
 });
 
 @Component({
@@ -459,14 +542,16 @@ describe('MdTooltip', () => {
   template: `
     <button *ngIf="showButton"
             [mdTooltip]="message"
-            [mdTooltipPosition]="position">
+            [mdTooltipPosition]="position"
+            [mdTooltipClass]="{'custom-one': showTooltipClass, 'custom-two': showTooltipClass }">
       Button
     </button>`
 })
 class BasicTooltipDemo {
   position: string = 'below';
-  message: string = initialTooltipMessage;
+  message: any = initialTooltipMessage;
   showButton: boolean = true;
+  showTooltipClass = false;
   @ViewChild(MdTooltip) tooltip: MdTooltip;
 }
 
@@ -512,4 +597,23 @@ class ScrollableTooltipDemo {
 class OnPushTooltipDemo {
   position: string = 'below';
   message: string = initialTooltipMessage;
+}
+
+
+@Component({
+  selector: 'app',
+  template: `
+    <button *ngFor="let tooltip of tooltips"
+            [mdTooltip]="tooltip">
+      Button {{tooltip}}
+    </button>`,
+})
+class DynamicTooltipsDemo {
+  tooltips: Array<string> = [];
+
+  constructor(private _elementRef: ElementRef) {}
+
+  getButtons() {
+    return this._elementRef.nativeElement.querySelectorAll('button');
+  }
 }

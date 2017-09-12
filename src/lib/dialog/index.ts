@@ -1,11 +1,18 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {
-  OverlayModule,
-  PortalModule,
-  A11yModule,
-  CompatibilityModule,
-} from '../core';
-import {MdDialog} from './dialog';
+/**
+ * @license
+ * Copyright Google Inc. All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {OverlayModule} from '@angular/cdk/overlay';
+import {PortalModule} from '@angular/cdk/portal';
+import {A11yModule} from '@angular/cdk/a11y';
+import {MdCommonModule} from '../core';
+import {MdDialog, MD_DIALOG_SCROLL_STRATEGY_PROVIDER} from './dialog';
 import {MdDialogContainer} from './dialog-container';
 import {
   MdDialogClose,
@@ -17,10 +24,11 @@ import {
 
 @NgModule({
   imports: [
+    CommonModule,
     OverlayModule,
     PortalModule,
     A11yModule,
-    CompatibilityModule,
+    MdCommonModule,
   ],
   exports: [
     MdDialogContainer,
@@ -28,7 +36,7 @@ import {
     MdDialogTitle,
     MdDialogContent,
     MdDialogActions,
-    CompatibilityModule,
+    MdCommonModule,
   ],
   declarations: [
     MdDialogContainer,
@@ -39,22 +47,14 @@ import {
   ],
   providers: [
     MdDialog,
+    MD_DIALOG_SCROLL_STRATEGY_PROVIDER,
   ],
   entryComponents: [MdDialogContainer],
 })
-export class MdDialogModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdDialogModule,
-      providers: [],
-    };
-  }
-}
+export class MdDialogModule {}
 
 export * from './dialog';
 export * from './dialog-container';
 export * from './dialog-content-directives';
 export * from './dialog-config';
 export * from './dialog-ref';
-export {MD_DIALOG_DATA} from './dialog-injector';

@@ -1,20 +1,17 @@
-import {
-    async, fakeAsync, tick, ComponentFixture, TestBed
-} from '@angular/core/testing';
-import {MdTabGroup, MdTabsModule, MdTabHeaderPosition} from './index';
-import {Component, ViewChild} from '@angular/core';
-import {NoopAnimationsModule} from '@angular/platform-browser/animations';
+import {async, ComponentFixture, fakeAsync, TestBed, tick} from '@angular/core/testing';
+import {Component, QueryList, ViewChild, ViewChildren} from '@angular/core';
+import {BrowserAnimationsModule, NoopAnimationsModule} from '@angular/platform-browser/animations';
 import {By} from '@angular/platform-browser';
+import {ViewportRuler} from '@angular/cdk/scrolling';
+import {dispatchFakeEvent, FakeViewportRuler} from '@angular/cdk/testing';
 import {Observable} from 'rxjs/Observable';
-import {MdTab} from './tab';
-import {ViewportRuler} from '../core/overlay/position/viewport-ruler';
-import {FakeViewportRuler} from '../core/overlay/position/fake-viewport-ruler';
+import {MdTab, MdTabGroup, MdTabHeaderPosition, MdTabsModule} from './index';
 
 
 describe('MdTabGroup', () => {
   beforeEach(async(() => {
     TestBed.configureTestingModule({
-      imports: [MdTabsModule.forRoot(), NoopAnimationsModule],
+      imports: [MdTabsModule, NoopAnimationsModule],
       declarations: [
         SimpleTabsTestApp,
         SimpleDynamicTabsTestApp,
@@ -71,6 +68,25 @@ describe('MdTabGroup', () => {
       fixture.whenStable().then(() => {
         expect(component.selectedIndex).toBe(1);
       });
+    }));
+
+    it('should set to correct tab on fast change', async(() => {
+      let component = fixture.componentInstance;
+      component.selectedIndex = 0;
+      fixture.detectChanges();
+
+      setTimeout(() => {
+        component.selectedIndex = 1;
+        fixture.detectChanges();
+
+        setTimeout(() => {
+          component.selectedIndex = 0;
+          fixture.detectChanges();
+          fixture.whenStable().then(() => {
+            expect(component.selectedIndex).toBe(0);
+          });
+        }, 1);
+      }, 1);
     }));
 
     it('should change tabs based on selectedIndex', fakeAsync(() => {
@@ -138,6 +154,85 @@ describe('MdTabGroup', () => {
         component.selectedIndex = NaN;
         fixture.detectChanges();
       }).not.toThrow();
+    });
+
+    it('should show ripples for tab-group labels', () => {
+      fixture.detectChanges();
+
+      const testElement = fixture.nativeElement;
+      const tabLabel = fixture.debugElement.queryAll(By.css('.mat-tab-label'))[1];
+
+      expect(testElement.querySelectorAll('.mat-ripple-element').length)
+        .toBe(0, 'Expected no ripples to show up initially.');
+
+      dispatchFakeEvent(tabLabel.nativeElement, 'mousedown');
+      dispatchFakeEvent(tabLabel.nativeElement, 'mouseup');
+
+      expect(testElement.querySelectorAll('.mat-ripple-element').length)
+        .toBe(1, 'Expected one ripple to show up on label mousedown.');
+    });
+
+    it('should allow disabling ripples for tab-group labels', () => {
+      fixture.componentInstance.disableRipple = true;
+      fixture.detectChanges();
+
+      const testElement = fixture.nativeElement;
+      const tabLabel = fixture.debugElement.queryAll(By.css('.mat-tab-label'))[1];
+
+      expect(testElement.querySelectorAll('.mat-ripple-element').length)
+        .toBe(0, 'Expected no ripples to show up initially.');
+
+      dispatchFakeEvent(tabLabel.nativeElement, 'mousedown');
+      dispatchFakeEvent(tabLabel.nativeElement, 'mouseup');
+
+      expect(testElement.querySelectorAll('.mat-ripple-element').length)
+        .toBe(0, 'Expected no ripple to show up on label mousedown.');
+    });
+
+    it('should set the isActive flag on each of the tabs', () => {
+      fixture.detectChanges();
+
+      const tabs = fixture.componentInstance.tabs.toArray();
+
+      expect(tabs[0].isActive).toBe(false);
+      expect(tabs[1].isActive).toBe(true);
+      expect(tabs[2].isActive).toBe(false);
+
+      fixture.componentInstance.selectedIndex = 2;
+      fixture.detectChanges();
+
+      expect(tabs[0].isActive).toBe(false);
+      expect(tabs[1].isActive).toBe(false);
+      expect(tabs[2].isActive).toBe(true);
+    });
+  });
+
+  describe('disable tabs', () => {
+    let fixture: ComponentFixture<DisabledTabsTestApp>;
+    beforeEach(() => {
+      fixture = TestBed.createComponent(DisabledTabsTestApp);
+    });
+
+    it('should have one disabled tab', () => {
+      fixture.detectChanges();
+      const labels = fixture.debugElement.queryAll(By.css('.mat-tab-disabled'));
+      expect(labels.length).toBe(1);
+    });
+
+    it('should set the disabled flag on tab', () => {
+      fixture.detectChanges();
+
+      const tabs = fixture.componentInstance.tabs.toArray();
+      let labels = fixture.debugElement.queryAll(By.css('.mat-tab-disabled'));
+      expect(tabs[2].disabled).toBe(false);
+      expect(labels.length).toBe(1);
+
+      fixture.componentInstance.isDisabled = true;
+      fixture.detectChanges();
+
+      expect(tabs[2].disabled).toBe(true);
+      labels = fixture.debugElement.queryAll(By.css('.mat-tab-disabled'));
+      expect(labels.length).toBe(2);
     });
   });
 
@@ -290,11 +385,32 @@ describe('MdTabGroup', () => {
   }
 });
 
+
+describe('nested MdTabGroup with enabled animations', () => {
+  beforeEach(async(() => {
+    TestBed.configureTestingModule({
+      imports: [MdTabsModule, BrowserAnimationsModule],
+      declarations: [NestedTabs]
+    });
+
+    TestBed.compileComponents();
+  }));
+
+  it('should not throw when creating a component with nested tab groups', async(() => {
+    expect(() => {
+      let fixture = TestBed.createComponent(NestedTabs);
+      fixture.detectChanges();
+    }).not.toThrow();
+  }));
+});
+
+
 @Component({
   template: `
     <md-tab-group class="tab-group"
         [(selectedIndex)]="selectedIndex"
         [headerPosition]="headerPosition"
+        [disableRipple]="disableRipple"
         (focusChange)="handleFocus($event)"
         (selectChange)="handleSelection($event)">
       <md-tab>
@@ -313,9 +429,11 @@ describe('MdTabGroup', () => {
   `
 })
 class SimpleTabsTestApp {
+  @ViewChildren(MdTab) tabs: QueryList<MdTab>;
   selectedIndex: number = 1;
   focusEvent: any;
   selectEvent: any;
+  disableRipple: boolean = false;
   headerPosition: MdTabHeaderPosition = 'above';
   handleFocus(event: any) {
     this.focusEvent = event;
@@ -392,14 +510,17 @@ class BindedTabsTestApp {
         <ng-template md-tab-label>Tab Two</ng-template>
         Tab two content
       </md-tab>
-      <md-tab>
+      <md-tab [disabled]="isDisabled">
         <ng-template md-tab-label>Tab Three</ng-template>
         Tab three content
       </md-tab>
     </md-tab-group>
   `,
 })
-class DisabledTabsTestApp {}
+class DisabledTabsTestApp {
+  @ViewChildren(MdTab) tabs: QueryList<MdTab>;
+  isDisabled = false;
+}
 
 @Component({
   template: `
@@ -443,3 +564,22 @@ class TabGroupWithSimpleApi {
   otherContent = 'Apples, grapes';
   @ViewChild('legumes') legumes: any;
 }
+
+
+@Component({
+  selector: 'nested-tabs',
+  template: `
+    <md-tab-group>
+      <md-tab label="One">Tab one content</md-tab>
+      <md-tab label="Two">
+        Tab two content
+         <md-tab-group [dynamicHeight]="true">
+          <md-tab label="Inner tab one">Inner content one</md-tab>
+          <md-tab label="Inner tab two">Inner content two</md-tab>
+        </md-tab-group>
+      </md-tab>
+    </md-tab-group>
+  `,
+})
+class NestedTabs {}
+
