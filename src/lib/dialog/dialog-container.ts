@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
@@ -17,25 +17,26 @@ import {
   ChangeDetectorRef,
   ViewChild,
   ViewEncapsulation,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import {animate, AnimationEvent, state, style, transition, trigger} from '@angular/animations';
 import {DOCUMENT} from '@angular/platform-browser';
 import {
-  BasePortalHost,
+  BasePortalOutlet,
   ComponentPortal,
-  PortalHostDirective,
+  CdkPortalOutlet,
   TemplatePortal
 } from '@angular/cdk/portal';
 import {FocusTrap, FocusTrapFactory} from '@angular/cdk/a11y';
-import {MdDialogConfig} from './dialog-config';
+import {MatDialogConfig} from './dialog-config';
 
 
 /**
  * Throws an exception for the case when a ComponentPortal is
- * attached to a DomPortalHost without an origin.
+ * attached to a DomPortalOutlet without an origin.
  * @docs-private
  */
-export function throwMdDialogContentAlreadyAttachedError() {
+export function throwMatDialogContentAlreadyAttachedError() {
   throw Error('Attempting to attach dialog content after content is already attached');
 }
 
@@ -46,10 +47,14 @@ export function throwMdDialogContentAlreadyAttachedError() {
  */
 @Component({
   moduleId: module.id,
-  selector: 'md-dialog-container, mat-dialog-container',
+  selector: 'mat-dialog-container',
   templateUrl: 'dialog-container.html',
   styleUrls: ['dialog.css'],
   encapsulation: ViewEncapsulation.None,
+  preserveWhitespaces: false,
+  // Using OnPush for dialogs caused some G3 sync issues. Disabled until we can track them down.
+  // tslint:disable-next-line:validate-decorators
+  changeDetection: ChangeDetectionStrategy.Default,
   animations: [
     trigger('slideDialog', [
       // Note: The `enter` animation doesn't transition to something like `translate3d(0, 0, 0)
@@ -73,9 +78,9 @@ export function throwMdDialogContentAlreadyAttachedError() {
     '(@slideDialog.done)': '_onAnimationDone($event)',
   },
 })
-export class MdDialogContainer extends BasePortalHost {
-  /** The portal host inside of this container into which the dialog content will be loaded. */
-  @ViewChild(PortalHostDirective) _portalHost: PortalHostDirective;
+export class MatDialogContainer extends BasePortalOutlet {
+  /** The portal outlet inside of this container into which the dialog content will be loaded. */
+  @ViewChild(CdkPortalOutlet) _portalOutlet: CdkPortalOutlet;
 
   /** The class that traps and manages focus within the dialog. */
   private _focusTrap: FocusTrap;
@@ -84,7 +89,7 @@ export class MdDialogContainer extends BasePortalHost {
   private _elementFocusedBeforeDialogWasOpened: HTMLElement | null = null;
 
   /** The dialog configuration. */
-  _config: MdDialogConfig;
+  _config: MatDialogConfig;
 
   /** State of the dialog animation. */
   _state: 'void' | 'enter' | 'exit' = 'enter';
@@ -94,9 +99,6 @@ export class MdDialogContainer extends BasePortalHost {
 
   /** ID of the element that should be considered as the dialog's label. */
   _ariaLabelledBy: string | null = null;
-
-  /** Whether the container is currently mid-animation. */
-  _isAnimating = false;
 
   constructor(
     private _elementRef: ElementRef,
@@ -112,12 +114,12 @@ export class MdDialogContainer extends BasePortalHost {
    * @param portal Portal to be attached as the dialog content.
    */
   attachComponentPortal<T>(portal: ComponentPortal<T>): ComponentRef<T> {
-    if (this._portalHost.hasAttached()) {
-      throwMdDialogContentAlreadyAttachedError();
+    if (this._portalOutlet.hasAttached()) {
+      throwMatDialogContentAlreadyAttachedError();
     }
 
     this._savePreviouslyFocusedElement();
-    return this._portalHost.attachComponentPortal(portal);
+    return this._portalOutlet.attachComponentPortal(portal);
   }
 
   /**
@@ -125,12 +127,12 @@ export class MdDialogContainer extends BasePortalHost {
    * @param portal Portal to be attached as the dialog content.
    */
   attachTemplatePortal<C>(portal: TemplatePortal<C>): EmbeddedViewRef<C> {
-    if (this._portalHost.hasAttached()) {
-      throwMdDialogContentAlreadyAttachedError();
+    if (this._portalOutlet.hasAttached()) {
+      throwMatDialogContentAlreadyAttachedError();
     }
 
     this._savePreviouslyFocusedElement();
-    return this._portalHost.attachTemplatePortal(portal);
+    return this._portalOutlet.attachTemplatePortal(portal);
   }
 
   /** Moves the focus inside the focus trap. */
@@ -142,13 +144,7 @@ export class MdDialogContainer extends BasePortalHost {
     // If were to attempt to focus immediately, then the content of the dialog would not yet be
     // ready in instances where change detection has to run first. To deal with this, we simply
     // wait for the microtask queue to be empty.
-    this._focusTrap.focusInitialElementWhenReady().then(hasMovedFocus => {
-      // If we didn't find any focusable elements inside the dialog, focus the
-      // container so the user can't tab into other elements behind it.
-      if (!hasMovedFocus) {
-        this._elementRef.nativeElement.focus();
-      }
-    });
+    this._focusTrap.focusInitialElementWhenReady();
   }
 
   /** Restores focus to the element that was focused before the dialog opened. */
@@ -169,6 +165,11 @@ export class MdDialogContainer extends BasePortalHost {
   private _savePreviouslyFocusedElement() {
     if (this._document) {
       this._elementFocusedBeforeDialogWasOpened = this._document.activeElement as HTMLElement;
+
+      // Move focus onto the dialog immediately in order to prevent the user from accidentally
+      // opening multiple dialogs at the same time. Needs to be async, because the element
+      // may not be focusable immediately.
+      Promise.resolve().then(() => this._elementRef.nativeElement.focus());
     }
   }
 
@@ -181,12 +182,10 @@ export class MdDialogContainer extends BasePortalHost {
     }
 
     this._animationStateChanged.emit(event);
-    this._isAnimating = false;
   }
 
   /** Callback, invoked when an animation on the host starts. */
   _onAnimationStart(event: AnimationEvent) {
-    this._isAnimating = true;
     this._animationStateChanged.emit(event);
   }
 

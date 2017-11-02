@@ -1,39 +1,40 @@
 /**
  * @license
- * Copyright Google Inc. All Rights Reserved.
+ * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {Direction, Directionality} from '@angular/cdk/bidi';
+import {ENTER, LEFT_ARROW, RIGHT_ARROW, SPACE} from '@angular/cdk/keycodes';
+import {startWith} from 'rxjs/operators/startWith';
 import {
-  ViewChild,
-  Component,
-  Input,
-  QueryList,
-  ElementRef,
-  ViewEncapsulation,
-  ContentChildren,
-  Output,
-  EventEmitter,
-  Optional,
   AfterContentChecked,
   AfterContentInit,
-  OnDestroy,
-  Renderer2,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  Component,
+  ContentChildren,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  Optional,
+  Output,
+  QueryList,
+  Renderer2,
+  ViewChild,
+  ViewEncapsulation,
 } from '@angular/core';
-import {Directionality, Direction} from '@angular/cdk/bidi';
-import {RIGHT_ARROW, LEFT_ARROW, ENTER, SPACE} from '@angular/cdk/keycodes';
-import {auditTime, startWith} from '@angular/cdk/rxjs';
-import {Subscription} from 'rxjs/Subscription';
-import {of as observableOf} from 'rxjs/observable/of';
+import {CanDisableRipple, mixinDisableRipple} from '@angular/material/core';
 import {merge} from 'rxjs/observable/merge';
-import {fromEvent} from 'rxjs/observable/fromEvent';
-import {MdTabLabelWrapper} from './tab-label-wrapper';
-import {MdInkBar} from './ink-bar';
-import {CanDisableRipple, mixinDisableRipple} from '../core/common-behaviors/disable-ripple';
+import {of as observableOf} from 'rxjs/observable/of';
+import {Subscription} from 'rxjs/Subscription';
+import {MatInkBar} from './ink-bar';
+import {MatTabLabelWrapper} from './tab-label-wrapper';
+import {ViewportRuler} from '@angular/cdk/scrolling';
+
 
 /**
  * The directions that scrolling can go in when the header's tabs exceed the header width. 'After'
@@ -48,10 +49,10 @@ export type ScrollDirection = 'after' | 'before';
  */
 const EXAGGERATED_OVERSCROLL = 60;
 
-// Boilerplate for applying mixins to MdTabHeader.
+// Boilerplate for applying mixins to MatTabHeader.
 /** @docs-private */
-export class MdTabHeaderBase {}
-export const _MdTabHeaderMixinBase = mixinDisableRipple(MdTabHeaderBase);
+export class MatTabHeaderBase {}
+export const _MatTabHeaderMixinBase = mixinDisableRipple(MatTabHeaderBase);
 
 /**
  * The header of the tab group which displays a list of all the tabs in the tab group. Includes
@@ -62,23 +63,24 @@ export const _MdTabHeaderMixinBase = mixinDisableRipple(MdTabHeaderBase);
  */
 @Component({
   moduleId: module.id,
-  selector: 'md-tab-header, mat-tab-header',
+  selector: 'mat-tab-header',
   templateUrl: 'tab-header.html',
   styleUrls: ['tab-header.css'],
   inputs: ['disableRipple'],
   encapsulation: ViewEncapsulation.None,
+  preserveWhitespaces: false,
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     'class': 'mat-tab-header',
     '[class.mat-tab-header-pagination-controls-enabled]': '_showPaginationControls',
     '[class.mat-tab-header-rtl]': "_getLayoutDirection() == 'rtl'",
-  }
+  },
 })
-export class MdTabHeader extends _MdTabHeaderMixinBase
+export class MatTabHeader extends _MatTabHeaderMixinBase
     implements AfterContentChecked, AfterContentInit, OnDestroy, CanDisableRipple {
 
-  @ContentChildren(MdTabLabelWrapper) _labelWrappers: QueryList<MdTabLabelWrapper>;
-  @ViewChild(MdInkBar) _inkBar: MdInkBar;
+  @ContentChildren(MatTabLabelWrapper) _labelWrappers: QueryList<MatTabLabelWrapper>;
+  @ViewChild(MatInkBar) _inkBar: MatInkBar;
   @ViewChild('tabListContainer') _tabListContainer: ElementRef;
   @ViewChild('tabList') _tabList: ElementRef;
 
@@ -132,6 +134,7 @@ export class MdTabHeader extends _MdTabHeaderMixinBase
   constructor(private _elementRef: ElementRef,
               private _renderer: Renderer2,
               private _changeDetectorRef: ChangeDetectorRef,
+              private _viewportRuler: ViewportRuler,
               @Optional() private _dir: Directionality) {
     super();
   }
@@ -184,11 +187,9 @@ export class MdTabHeader extends _MdTabHeaderMixinBase
    */
   ngAfterContentInit() {
     const dirChange = this._dir ? this._dir.change : observableOf(null);
-    const resize = typeof window !== 'undefined' ?
-        auditTime.call(fromEvent(window, 'resize'), 150) :
-        observableOf(null);
+    const resize = this._viewportRuler.change(150);
 
-    this._realignInkBar = startWith.call(merge(dirChange, resize), null).subscribe(() => {
+    this._realignInkBar = merge(dirChange, resize).pipe(startWith(null)).subscribe(() => {
       this._updatePagination();
       this._alignInkBarToSelectedTab();
     });
@@ -271,7 +272,7 @@ export class MdTabHeader extends _MdTabHeaderMixinBase
    */
   _moveFocus(offset: number) {
     if (this._labelWrappers) {
-      const tabs: MdTabLabelWrapper[] = this._labelWrappers.toArray();
+      const tabs: MatTabLabelWrapper[] = this._labelWrappers.toArray();
 
       for (let i = this.focusIndex + offset; i < tabs.length && i >= 0; i += offset) {
         if (this._isValidIndex(i)) {

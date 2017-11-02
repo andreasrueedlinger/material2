@@ -4,14 +4,18 @@
 {
   "extends": "./tsconfig-build",
   "compilerOptions": {
+    // Needed for Moment.js since it doesn't have a default export.
+    "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     // TODO(paul): Remove once Angular has been upgraded and supports noUnusedParameters in AOT.
     "noUnusedParameters": false,
     "strictNullChecks": true,
     "outDir": ".",
     "paths": {
+      "@angular/cdk/*": ["./cdk/*"],
       "@angular/material": ["./material"],
-      "@angular/cdk/*": ["./cdk/*"]
+      "@angular/material/*": ["./material/*"],
+      "@angular/material-moment-adapter": ["./material-moment-adapter"]
     }
   },
   "files": [
