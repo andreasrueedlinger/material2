@@ -27,15 +27,16 @@ import {
   Optional,
   Output,
   QueryList,
-  Renderer2,
   ViewEncapsulation,
+  InjectionToken,
 } from '@angular/core';
-import {DOCUMENT} from '@angular/platform-browser';
+import {DOCUMENT} from '@angular/common';
 import {merge} from 'rxjs/observable/merge';
 import {filter} from 'rxjs/operators/filter';
-import {first} from 'rxjs/operators/first';
+import {take} from 'rxjs/operators/take';
 import {startWith} from 'rxjs/operators/startWith';
 import {takeUntil} from 'rxjs/operators/takeUntil';
+import {debounceTime} from 'rxjs/operators/debounceTime';
 import {map} from 'rxjs/operators/map';
 import {Subject} from 'rxjs/Subject';
 import {Observable} from 'rxjs/Observable';
@@ -55,6 +56,9 @@ export class MatDrawerToggleResult {
   constructor(public type: 'open' | 'close', public animationFinished: boolean) {}
 }
 
+/** Configures whether drawers should use auto sizing by default. */
+export const MAT_DRAWER_DEFAULT_AUTOSIZE =
+    new InjectionToken<boolean>('MAT_DRAWER_DEFAULT_AUTOSIZE');
 
 @Component({
   moduleId: module.id,
@@ -62,8 +66,8 @@ export class MatDrawerToggleResult {
   template: '<ng-content></ng-content>',
   host: {
     'class': 'mat-drawer-content',
-    '[style.marginLeft.px]': '_margins.left',
-    '[style.marginRight.px]': '_margins.right',
+    '[style.margin-left.px]': '_margins.left',
+    '[style.margin-right.px]': '_margins.right',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
@@ -75,7 +79,7 @@ export class MatDrawerContent implements AfterContentInit {
    * drawer is open. We use margin rather than transform even for push mode because transform breaks
    * fixed position elements inside of the transformed element.
    */
-  _margins: {left: number, right: number} = {left: 0, right: 0};
+  _margins: {left: number|null, right: number|null} = {left: null, right: null};
 
   constructor(
       private _changeDetectorRef: ChangeDetectorRef,
@@ -193,21 +197,39 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
     return this.openedChange.pipe(filter(o => o), map(() => {}));
   }
 
+  /** Event emitted when the drawer has started opening. */
+  @Output()
+  get openedStart(): Observable<void> {
+    return this._animationStarted.pipe(
+      filter(e => e.fromState !== e.toState && e.toState.indexOf('open') === 0),
+      map(() => {})
+    );
+  }
+
   /** Event emitted when the drawer has been closed. */
   @Output('closed')
   get _closedStream(): Observable<void> {
     return this.openedChange.pipe(filter(o => !o), map(() => {}));
   }
 
+  /** Event emitted when the drawer has started closing. */
+  @Output()
+  get closedStart(): Observable<void> {
+    return this._animationStarted.pipe(
+      filter(e => e.fromState !== e.toState && e.toState === 'void'),
+      map(() => {})
+    );
+  }
+
   /**
    * Event emitted when the drawer is fully opened.
-   * @deprecated Use `openedChange` instead.
+   * @deprecated Use `opened` instead.
    */
   @Output('open') onOpen = this._openedStream;
 
   /**
    * Event emitted when the drawer is fully closed.
-   * @deprecated Use `openedChange` instead.
+   * @deprecated Use `closed` instead.
    */
   @Output('close') onClose = this._closedStream;
 
@@ -327,8 +349,10 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
 
     // TODO(crisbeto): This promise is here for backwards-compatibility.
     // It should be removed next time we do breaking changes in the drawer.
-    return new Promise(resolve => {
-      (isOpen ? this.onOpen : this.onClose).pipe(first()).subscribe(resolve);
+    return new Promise<any>(resolve => {
+      this.openedChange.pipe(take(1)).subscribe(open => {
+        resolve(new MatDrawerToggleResult(open ? 'open' : 'close', true));
+      });
     });
   }
 
@@ -384,7 +408,6 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
 })
 export class MatDrawerContainer implements AfterContentInit, OnDestroy {
   @ContentChildren(MatDrawer) _drawers: QueryList<MatDrawer>;
-
   @ContentChild(MatDrawerContent) _content: MatDrawerContent;
 
   /** The drawer child with the `start` position. */
@@ -392,6 +415,19 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
 
   /** The drawer child with the `end` position. */
   get end(): MatDrawer | null { return this._end; }
+
+  /**
+   * Whether to automatically resize the container whenever
+   * the size of any of its drawers changes.
+   *
+   * **Use at your own risk!** Enabling this option can cause layout thrashing by measuring
+   * the drawers on every change detection cycle. Can be configured globally via the
+   * `MAT_DRAWER_DEFAULT_AUTOSIZE` token.
+   */
+  @Input()
+  get autosize(): boolean { return this._autosize; }
+  set autosize(value: boolean) { this._autosize = coerceBooleanProperty(value); }
+  private _autosize: boolean;
 
   /** Event emitted when the drawer backdrop is clicked. */
   @Output() backdropClick = new EventEmitter<void>();
@@ -412,16 +448,23 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
   /** Emits when the component is destroyed. */
   private _destroyed = new Subject<void>();
 
-  _contentMargins = new Subject<{left: number, right: number}>();
+  /** Emits on every ngDoCheck. Used for debouncing reflows. */
+  private _doCheckSubject = new Subject<void>();
 
-  constructor(@Optional() private _dir: Directionality, private _element: ElementRef,
-              private _renderer: Renderer2, private _ngZone: NgZone,
-              private _changeDetectorRef: ChangeDetectorRef) {
+  _contentMargins = new Subject<{left: number|null, right: number|null}>();
+
+  constructor(@Optional() private _dir: Directionality,
+              private _element: ElementRef,
+              private _ngZone: NgZone,
+              private _changeDetectorRef: ChangeDetectorRef,
+              @Inject(MAT_DRAWER_DEFAULT_AUTOSIZE) defaultAutosize = false) {
     // If a `Dir` directive exists up the tree, listen direction changes and update the left/right
     // properties to point to the proper start/end.
     if (_dir != null) {
       _dir.change.pipe(takeUntil(this._destroyed)).subscribe(() => this._validateDrawers());
     }
+
+    this._autosize = defaultAutosize;
   }
 
   ngAfterContentInit() {
@@ -442,9 +485,15 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
 
       this._changeDetectorRef.markForCheck();
     });
+
+    this._doCheckSubject.pipe(
+      debounceTime(10), // Arbitrary debounce time, less than a frame at 60fps
+      takeUntil(this._destroyed)
+    ).subscribe(() => this._updateContentMargins());
   }
 
   ngOnDestroy() {
+    this._doCheckSubject.complete();
     this._destroyed.next();
     this._destroyed.complete();
   }
@@ -457,6 +506,14 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
   /** Calls `close` of both start and end drawers */
   close(): void {
     this._drawers.forEach(drawer => drawer.close());
+  }
+
+  ngDoCheck() {
+    // If users opted into autosizing, do a check every change detection cycle.
+    if (this._autosize && this._isPushed()) {
+      // Run outside the NgZone, otherwise the debouncer will throw us into an infinite loop.
+      this._ngZone.runOutsideAngular(() => this._doCheckSubject.next());
+    }
   }
 
   /**
@@ -473,7 +530,7 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
       // Set the transition class on the container so that the animations occur. This should not
       // be set initially because animations should only be triggered via a change in state.
       if (event.toState !== 'open-instant') {
-        this._renderer.addClass(this._element.nativeElement, 'mat-drawer-transition');
+        this._element.nativeElement.classList.add('mat-drawer-transition');
       }
 
       this._updateContentMargins();
@@ -497,7 +554,7 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
     // NOTE: We need to wait for the microtask queue to be empty before validating,
     // since both drawers may be swapping positions at the same time.
     drawer.onPositionChanged.pipe(takeUntil(this._drawers.changes)).subscribe(() => {
-      this._ngZone.onMicrotaskEmpty.asObservable().pipe(first()).subscribe(() => {
+      this._ngZone.onMicrotaskEmpty.asObservable().pipe(take(1)).subscribe(() => {
         this._validateDrawers();
       });
     });
@@ -517,9 +574,9 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
   /** Toggles the 'mat-drawer-opened' class on the main 'mat-drawer-container' element. */
   private _setContainerClass(isAdd: boolean): void {
     if (isAdd) {
-      this._renderer.addClass(this._element.nativeElement, 'mat-drawer-opened');
+      this._element.nativeElement.classList.add('mat-drawer-opened');
     } else {
-      this._renderer.removeClass(this._element.nativeElement, 'mat-drawer-opened');
+      this._element.nativeElement.classList.remove('mat-drawer-opened');
     }
   }
 
@@ -552,6 +609,12 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
       this._left = this._end;
       this._right = this._start;
     }
+  }
+
+  /** Whether the container is being pushed to the side by one of the drawers. */
+  private _isPushed() {
+    return (this._isDrawerOpen(this._start) && this._start!.mode != 'over') ||
+           (this._isDrawerOpen(this._end) && this._end!.mode != 'over');
   }
 
   _onBackdropClicked() {
@@ -610,6 +673,7 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
       }
     }
 
-    this._contentMargins.next({left, right});
+    // Pull back into the NgZone since in some cases we could be outside.
+    this._ngZone.run(() => this._contentMargins.next({left, right}));
   }
 }

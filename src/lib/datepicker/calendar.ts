@@ -36,7 +36,7 @@ import {
   SimpleChanges,
 } from '@angular/core';
 import {DateAdapter, MAT_DATE_FORMATS, MatDateFormats} from '@angular/material/core';
-import {first} from 'rxjs/operators/first';
+import {take} from 'rxjs/operators/take';
 import {Subscription} from 'rxjs/Subscription';
 import {createMissingDateImplError} from './datepicker-errors';
 import {MatDatepickerIntl} from './datepicker-intl';
@@ -56,6 +56,7 @@ import {MatYearView} from './year-view';
   host: {
     'class': 'mat-calendar',
   },
+  exportAs: 'matCalendar',
   encapsulation: ViewEncapsulation.None,
   preserveWhitespaces: false,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -260,7 +261,7 @@ export class MatCalendar<D> implements AfterContentInit, OnDestroy, OnChanges {
   /** Focuses the active cell after the microtask queue is empty. */
   _focusActiveCell() {
     this._ngZone.runOutsideAngular(() => {
-      this._ngZone.onStable.asObservable().pipe(first()).subscribe(() => {
+      this._ngZone.onStable.asObservable().pipe(take(1)).subscribe(() => {
         this._elementRef.nativeElement.querySelector('.mat-calendar-body-active').focus();
       });
     });
@@ -311,6 +312,7 @@ export class MatCalendar<D> implements AfterContentInit, OnDestroy, OnChanges {
       case ENTER:
         if (this._dateFilterForViews(this._activeDate)) {
           this._dateSelected(this._activeDate);
+          this._userSelected();
           // Prevent unexpected default actions such as form submission.
           event.preventDefault();
         }
@@ -374,11 +376,8 @@ export class MatCalendar<D> implements AfterContentInit, OnDestroy, OnChanges {
    * calendar table.
    */
   private _prevMonthInSameCol(date: D): D {
-    // Determine how many months to jump forward given that there are 2 empty slots at the beginning
-    // of each year.
-    let increment = this._dateAdapter.getMonth(date) <= 4 ? -5 :
-        (this._dateAdapter.getMonth(date) >= 7 ? -7 : -12);
-    return this._dateAdapter.addCalendarMonths(date, increment);
+    // Decrement by 4 since there are 4 months per row.
+    return this._dateAdapter.addCalendarMonths(date, -4);
   }
 
   /**
@@ -386,11 +385,8 @@ export class MatCalendar<D> implements AfterContentInit, OnDestroy, OnChanges {
    * calendar table.
    */
   private _nextMonthInSameCol(date: D): D {
-    // Determine how many months to jump forward given that there are 2 empty slots at the beginning
-    // of each year.
-    let increment = this._dateAdapter.getMonth(date) <= 4 ? 7 :
-        (this._dateAdapter.getMonth(date) >= 7 ? 5 : 12);
-    return this._dateAdapter.addCalendarMonths(date, increment);
+    // Increment by 4 since there are 4 months per row.
+    return this._dateAdapter.addCalendarMonths(date, 4);
   }
 
   /**
