@@ -41,6 +41,7 @@ import {MatDialog, MatDialogRef} from '@angular/material/dialog';
 import {DOCUMENT} from '@angular/common';
 import {Subject} from 'rxjs/Subject';
 import {Subscription} from 'rxjs/Subscription';
+import {merge} from 'rxjs/observable/merge';
 import {MatCalendar} from './calendar';
 import {createMissingDateImplError} from './datepicker-errors';
 import {MatDatepickerInput} from './datepicker-input';
@@ -310,15 +311,29 @@ export class MatDatepicker<D> implements OnDestroy {
     if (this._calendarPortal && this._calendarPortal.isAttached) {
       this._calendarPortal.detach();
     }
+
+    const completeClose = () => {
+      // The `_opened` could've been reset already if
+      // we got two events in quick succession.
+      if (this._opened) {
+        this._opened = false;
+        this.closedStream.emit();
+        this._focusedElementBeforeOpen = null;
+      }
+    };
+
     if (this._focusedElementBeforeOpen &&
       typeof this._focusedElementBeforeOpen.focus === 'function') {
-
+      // Because IE moves focus asynchronously, we can't count on it being restored before we've
+      // marked the datepicker as closed. If the event fires out of sequence and the element that
+      // we're refocusing opens the datepicker on focus, the user could be stuck with not being
+      // able to close the calendar at all. We work around it by making the logic, that marks
+      // the datepicker as closed, async as well.
       this._focusedElementBeforeOpen.focus();
-      this._focusedElementBeforeOpen = null;
+      setTimeout(completeClose);
+    } else {
+      completeClose();
     }
-
-    this._opened = false;
-    this.closedStream.emit();
   }
 
   /** Open the calendar as a dialog. */
@@ -352,8 +367,6 @@ export class MatDatepicker<D> implements OnDestroy {
         this._popupRef.updatePosition();
       });
     }
-
-    this._popupRef.backdropClick().subscribe(() => this.close());
   }
 
   /** Create the popup. */
@@ -368,6 +381,9 @@ export class MatDatepicker<D> implements OnDestroy {
     });
 
     this._popupRef = this._overlay.create(overlayConfig);
+
+    merge(this._popupRef.backdropClick(), this._popupRef.detachments())
+      .subscribe(() => this.close());
   }
 
   /** Create the popup PositionStrategy. */

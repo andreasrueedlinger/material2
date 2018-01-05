@@ -72,9 +72,12 @@ describe('MatMenu', () => {
     })();
   }));
 
-  afterEach(() => {
+  afterEach(inject([OverlayContainer], (currentOverlayContainer: OverlayContainer) => {
+    // Since we're resetting the testing module in some of the tests,
+    // we can potentially have multiple overlay containers.
+    currentOverlayContainer.ngOnDestroy();
     overlayContainer.ngOnDestroy();
-  });
+  }));
 
   it('should open the menu as an idempotent operation', () => {
     const fixture = TestBed.createComponent(SimpleMenu);
@@ -253,17 +256,15 @@ describe('MatMenu', () => {
         imports: [MatMenuModule, NoopAnimationsModule],
         declarations: [SimpleMenu, FakeIcon],
         providers: [
-          {
-            provide: ScrollDispatcher,
-            useFactory: () => ({scrolled: () => scrolledSubject})
-          },
+          {provide: ScrollDispatcher, useFactory: () => ({scrolled: () => scrolledSubject})},
           {
             provide: MAT_MENU_SCROLL_STRATEGY,
             deps: [Overlay],
             useFactory: (overlay: Overlay) => () => overlay.scrollStrategies.close()
           }
         ]
-      });
+      })
+      .compileComponents();
 
     const fixture = TestBed.createComponent(SimpleMenu);
     const trigger = fixture.componentInstance.trigger;

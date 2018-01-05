@@ -421,7 +421,8 @@ export class MatIconRegistry {
     let svg = this._svgElementFromString('<svg></svg>');
 
     for (let i = 0; i < element.childNodes.length; i++) {
-      if (element.childNodes[i].nodeType === Node.ELEMENT_NODE) {
+      // Note: 1 corresponds to `Node.ELEMENT_NODE` which we can't use in Universal.
+      if (element.childNodes[i].nodeType === 1) {
         svg.appendChild(element.childNodes[i].cloneNode(true));
       }
     }
@@ -488,7 +489,7 @@ export function ICON_REGISTRY_PROVIDER_FACTORY(
 
 /** @docs-private */
 export const ICON_REGISTRY_PROVIDER = {
-  // If there is already an MdIconRegistry available, use that. Otherwise, provide a new one.
+  // If there is already an MatIconRegistry available, use that. Otherwise, provide a new one.
   provide: MatIconRegistry,
   deps: [
     [new Optional(), new SkipSelf(), MatIconRegistry],

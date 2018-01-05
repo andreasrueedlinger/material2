@@ -41,7 +41,9 @@ let nextId = 0;
 
 /** A simple change event emitted on focus or selection changes. */
 export class MatTabChangeEvent {
+  /** Index of the currently-selected tab. */
   index: number;
+  /** Reference to the currently-selected tab. */
   tab: MatTab;
 }
 
@@ -138,6 +140,9 @@ export class MatTabGroup extends _MatTabGroupMixinBase implements AfterContentIn
 
   /** Event emitted when focus has changed within a tab group. */
   @Output() focusChange: EventEmitter<MatTabChangeEvent> = new EventEmitter<MatTabChangeEvent>();
+
+  /** Event emitted when the body animation has completed */
+  @Output() animationDone: EventEmitter<void> = new EventEmitter<void>();
 
   /** Event emitted when the tab selection has changed. */
   @Output() selectedTabChange: EventEmitter<MatTabChangeEvent> =
@@ -278,6 +283,7 @@ export class MatTabGroup extends _MatTabGroupMixinBase implements AfterContentIn
   _removeTabBodyWrapperHeight(): void {
     this._tabBodyWrapperHeight = this._tabBodyWrapper.nativeElement.clientHeight;
     this._tabBodyWrapper.nativeElement.style.height = '';
+    this.animationDone.emit();
   }
 
   /** Handle click events, setting new selected index if appropriate. */

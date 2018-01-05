@@ -5,12 +5,14 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-import {animate, AnimationEvent, state, style, transition, trigger} from '@angular/animations';
+import {AnimationEvent} from '@angular/animations';
 import {FocusTrap, FocusTrapFactory, FocusMonitor, FocusOrigin} from '@angular/cdk/a11y';
 import {Directionality} from '@angular/cdk/bidi';
 import {coerceBooleanProperty} from '@angular/cdk/coercion';
 import {ESCAPE} from '@angular/cdk/keycodes';
+import {Platform} from '@angular/cdk/platform';
 import {
+  AfterContentChecked,
   AfterContentInit,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -40,6 +42,7 @@ import {debounceTime} from 'rxjs/operators/debounceTime';
 import {map} from 'rxjs/operators/map';
 import {Subject} from 'rxjs/Subject';
 import {Observable} from 'rxjs/Observable';
+import {matDrawerAnimations} from './drawer-animations';
 
 
 /** Throws an exception when two MatDrawer are matching the same position. */
@@ -53,7 +56,11 @@ export function throwMatDuplicatedDrawerError(position: string) {
  * @deprecated
  */
 export class MatDrawerToggleResult {
-  constructor(public type: 'open' | 'close', public animationFinished: boolean) {}
+  constructor(
+    /** Whether the drawer is opened or closed. */
+    public type: 'open' | 'close',
+    /** Whether the drawer animation is finished. */
+    public animationFinished: boolean) {}
 }
 
 /** Configures whether drawers should use auto sizing by default. */
@@ -103,20 +110,7 @@ export class MatDrawerContent implements AfterContentInit {
   selector: 'mat-drawer',
   exportAs: 'matDrawer',
   template: '<ng-content></ng-content>',
-  animations: [
-    trigger('transform', [
-      state('open, open-instant', style({
-        transform: 'translate3d(0, 0, 0)',
-        visibility: 'visible',
-      })),
-      state('void', style({
-        visibility: 'hidden',
-      })),
-      transition('void => open-instant', animate('0ms')),
-      transition('void <=> open, open-instant => void',
-          animate('400ms cubic-bezier(0.25, 0.8, 0.25, 1)'))
-    ])
-  ],
+  animations: [matDrawerAnimations.transformDrawer],
   host: {
     'class': 'mat-drawer',
     '[@transform]': '_animationState',
@@ -135,7 +129,7 @@ export class MatDrawerContent implements AfterContentInit {
   encapsulation: ViewEncapsulation.None,
   preserveWhitespaces: false,
 })
-export class MatDrawer implements AfterContentInit, OnDestroy {
+export class MatDrawer implements AfterContentInit, AfterContentChecked, OnDestroy {
   private _focusTrap: FocusTrap;
   private _elementFocusedBeforeDrawerWasOpened: HTMLElement | null = null;
 
@@ -189,7 +183,9 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
   _animationState: 'open-instant' | 'open' | 'void' = 'void';
 
   /** Event emitted when the drawer open state is changed. */
-  @Output() openedChange: EventEmitter<boolean> = new EventEmitter<boolean>();
+  @Output() openedChange: EventEmitter<boolean> =
+      // Note this has to be async in order to avoid some issues with two-bindings (see #8872).
+      new EventEmitter<boolean>(/* isAsync */true);
 
   /** Event emitted when the drawer has been opened. */
   @Output('opened')
@@ -253,7 +249,9 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
   constructor(private _elementRef: ElementRef,
               private _focusTrapFactory: FocusTrapFactory,
               private _focusMonitor: FocusMonitor,
+              private _platform: Platform,
               @Optional() @Inject(DOCUMENT) private _doc: any) {
+
     this.openedChange.subscribe((opened: boolean) => {
       if (opened) {
         if (this._doc) {
@@ -261,10 +259,21 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
         }
 
         if (this._isFocusTrapEnabled && this._focusTrap) {
-          this._focusTrap.focusInitialElementWhenReady();
+          this._trapFocus();
         }
       } else {
         this._restoreFocus();
+      }
+    });
+  }
+
+  /** Traps focus inside the drawer. */
+  private _trapFocus() {
+    this._focusTrap.focusInitialElementWhenReady().then(hasMovedFocus => {
+      // If there were no focusable elements, focus the sidenav itself so the keyboard navigation
+      // still works. We need to check that `focus` is a function due to Universal.
+      if (!hasMovedFocus && typeof this._elementRef.nativeElement.focus === 'function') {
+        this._elementRef.nativeElement.focus();
       }
     });
   }
@@ -291,7 +300,16 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
   ngAfterContentInit() {
     this._focusTrap = this._focusTrapFactory.create(this._elementRef.nativeElement);
     this._focusTrap.enabled = this._isFocusTrapEnabled;
-    this._enableAnimations = true;
+  }
+
+  ngAfterContentChecked() {
+    // Enable the animations after the lifecycle hooks have run, in order to avoid animating
+    // drawers that are open by default. When we're on the server, we shouldn't enable the
+    // animations, because we don't want the drawer to animate the first time the user sees
+    // the page.
+    if (this._platform.isBrowser) {
+      this._enableAnimations = true;
+    }
   }
 
   ngOnDestroy() {
@@ -374,10 +392,9 @@ export class MatDrawer implements AfterContentInit, OnDestroy {
   _onAnimationEnd(event: AnimationEvent) {
     const {fromState, toState} = event;
 
-    if (toState.indexOf('open') === 0 && fromState === 'void') {
-      this.openedChange.emit(true);
-    } else if (toState === 'void' && fromState.indexOf('open') === 0) {
-      this.openedChange.emit(false);
+    if ((toState.indexOf('open') === 0 && fromState === 'void') ||
+        (toState === 'void' && fromState.indexOf('open') === 0)) {
+      this.openedChange.emit(this._opened);
     }
   }
 
@@ -458,10 +475,14 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
               private _ngZone: NgZone,
               private _changeDetectorRef: ChangeDetectorRef,
               @Inject(MAT_DRAWER_DEFAULT_AUTOSIZE) defaultAutosize = false) {
-    // If a `Dir` directive exists up the tree, listen direction changes and update the left/right
-    // properties to point to the proper start/end.
-    if (_dir != null) {
-      _dir.change.pipe(takeUntil(this._destroyed)).subscribe(() => this._validateDrawers());
+
+    // If a `Dir` directive exists up the tree, listen direction changes
+    // and update the left/right properties to point to the proper start/end.
+    if (_dir) {
+      _dir.change.pipe(takeUntil(this._destroyed)).subscribe(() => {
+        this._validateDrawers();
+        this._updateContentMargins();
+      });
     }
 
     this._autosize = defaultAutosize;
@@ -602,7 +623,7 @@ export class MatDrawerContainer implements AfterContentInit, OnDestroy {
     this._right = this._left = null;
 
     // Detect if we're LTR or RTL.
-    if (this._dir == null || this._dir.value == 'ltr') {
+    if (!this._dir || this._dir.value == 'ltr') {
       this._left = this._start;
       this._right = this._end;
     } else {
