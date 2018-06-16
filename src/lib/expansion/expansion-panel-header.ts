@@ -8,7 +8,6 @@
 
 import {FocusMonitor} from '@angular/cdk/a11y';
 import {ENTER, SPACE} from '@angular/cdk/keycodes';
-import {filter} from 'rxjs/operators/filter';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -20,18 +19,16 @@ import {
   OnDestroy,
   ViewEncapsulation,
 } from '@angular/core';
-import {merge} from 'rxjs/observable/merge';
-import {Subscription} from 'rxjs/Subscription';
-import {MatExpansionPanel} from './expansion-panel';
+import {merge, Subscription} from 'rxjs';
+import {filter} from 'rxjs/operators';
 import {matExpansionAnimations} from './expansion-animations';
+import {MatExpansionPanel} from './expansion-panel';
 
 
 /**
- * <mat-expansion-panel-header> component.
+ * `<mat-expansion-panel-header>`
  *
- * This component corresponds to the header element of an <mat-expansion-panel>.
- *
- * Please refer to README.md for examples on how to use it.
+ * This component corresponds to the header element of an `<mat-expansion-panel>`.
  */
 @Component({
   moduleId: module.id,
@@ -39,7 +36,6 @@ import {matExpansionAnimations} from './expansion-animations';
   styleUrls: ['./expansion-panel-header.css'],
   templateUrl: './expansion-panel-header.html',
   encapsulation: ViewEncapsulation.None,
-  preserveWhitespaces: false,
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     matExpansionAnimations.indicatorRotate,
@@ -48,13 +44,14 @@ import {matExpansionAnimations} from './expansion-animations';
   host: {
     'class': 'mat-expansion-panel-header',
     'role': 'button',
+    '[attr.id]': 'panel._headerId',
     '[attr.tabindex]': 'panel.disabled ? -1 : 0',
     '[attr.aria-controls]': '_getPanelId()',
     '[attr.aria-expanded]': '_isExpanded()',
     '[attr.aria-disabled]': 'panel.disabled',
     '[class.mat-expanded]': '_isExpanded()',
     '(click)': '_toggle()',
-    '(keyup)': '_keyup($event)',
+    '(keydown)': '_keydown($event)',
     '[@expansionHeight]': `{
         value: _getExpandedState(),
         params: {
@@ -82,7 +79,7 @@ export class MatExpansionPanelHeader implements OnDestroy {
     )
     .subscribe(() => this._changeDetectorRef.markForCheck());
 
-    _focusMonitor.monitor(_element.nativeElement, false);
+    _focusMonitor.monitor(_element.nativeElement);
   }
 
   /** Height of the header while the panel is expanded. */
@@ -93,9 +90,7 @@ export class MatExpansionPanelHeader implements OnDestroy {
 
   /** Toggles the expanded state of the panel. */
   _toggle(): void {
-    if (!this.panel.disabled) {
-      this.panel.toggle();
-    }
+    this.panel.toggle();
   }
 
   /** Gets whether the panel is expanded. */
@@ -118,8 +113,8 @@ export class MatExpansionPanelHeader implements OnDestroy {
     return !this.panel.hideToggle && !this.panel.disabled;
   }
 
-  /** Handle keyup event calling to toggle() if appropriate. */
-  _keyup(event: KeyboardEvent) {
+  /** Handle keydown event calling to toggle() if appropriate. */
+  _keydown(event: KeyboardEvent) {
     switch (event.keyCode) {
       // Toggle for space and enter keys.
       case SPACE:
@@ -139,9 +134,9 @@ export class MatExpansionPanelHeader implements OnDestroy {
 }
 
 /**
- * <mat-panel-description> directive.
+ * `<mat-panel-description>`
  *
- * This direction is to be used inside of the MatExpansionPanelHeader component.
+ * This directive is to be used inside of the MatExpansionPanelHeader component.
  */
 @Directive({
   selector: 'mat-panel-description',
@@ -152,9 +147,9 @@ export class MatExpansionPanelHeader implements OnDestroy {
 export class MatExpansionPanelDescription {}
 
 /**
- * <mat-panel-title> directive.
+ * `<mat-panel-title>`
  *
- * This direction is to be used inside of the MatExpansionPanelHeader component.
+ * This directive is to be used inside of the MatExpansionPanelHeader component.
  */
 @Directive({
   selector: 'mat-panel-title',

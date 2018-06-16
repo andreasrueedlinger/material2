@@ -9,25 +9,30 @@ import {ElementRef, NgZone} from '@angular/core';
 import {Platform, supportsPassiveEventListeners} from '@angular/cdk/platform';
 import {RippleRef, RippleState} from './ripple-ref';
 
-/** Fade-in duration for the ripples. Can be modified with the speedFactor option. */
-export const RIPPLE_FADE_IN_DURATION = 450;
-
-/** Fade-out duration for the ripples in milliseconds. This can't be modified by the speedFactor. */
-export const RIPPLE_FADE_OUT_DURATION = 400;
-
-/**
- * Timeout for ignoring mouse events. Mouse events will be temporary ignored after touch
- * events to avoid synthetic mouse events.
- */
-const IGNORE_MOUSE_EVENTS_TIMEOUT = 800;
-
 export type RippleConfig = {
   color?: string;
   centered?: boolean;
   radius?: number;
-  speedFactor?: number;
   persistent?: boolean;
+  animation?: RippleAnimationConfig;
+  terminateOnPointerUp?: boolean;
+  /**
+   * @deprecated Use the `animation` property instead.
+   * @deletion-target 7.0.0
+   */
+  speedFactor?: number;
 };
+
+/**
+ * Interface that describes the configuration for the animation of a ripple.
+ * There are two animation phases with different durations for the ripples.
+ */
+export interface RippleAnimationConfig {
+  /** Duration in milliseconds for the enter animation (expansion from point of contact). */
+  enterDuration?: number;
+  /** Duration in milliseconds for the exit animation (fade-out). */
+  exitDuration?: number;
+}
 
 /**
  * Interface that describes the target for launching ripples.
@@ -37,10 +42,24 @@ export type RippleConfig = {
 export interface RippleTarget {
   /** Configuration for ripples that are launched on pointer down. */
   rippleConfig: RippleConfig;
-
   /** Whether ripples on pointer down should be disabled. */
   rippleDisabled: boolean;
 }
+
+/**
+ * Default ripple animation configuration for ripples without an explicit
+ * animation config specified.
+ */
+export const defaultRippleAnimationConfig = {
+  enterDuration: 450,
+  exitDuration: 400
+};
+
+/**
+ * Timeout for ignoring mouse events. Mouse events will be temporary ignored after touch
+ * events to avoid synthetic mouse events.
+ */
+const ignoreMouseEventsTimeout = 800;
 
 /**
  * Helper service that performs DOM manipulations. Not intended to be used outside this module.
@@ -50,7 +69,6 @@ export interface RippleTarget {
  * @docs-private
  */
 export class RippleRenderer {
-
   /** Element where the ripples are being added to. */
   private _containerElement: HTMLElement;
 
@@ -66,11 +84,20 @@ export class RippleRenderer {
   /** Set of currently active ripple references. */
   private _activeRipples = new Set<RippleRef>();
 
+  /** Latest non-persistent ripple that was triggered. */
+  private _mostRecentTransientRipple: RippleRef | null;
+
   /** Time in milliseconds when the last touchstart event happened. */
   private _lastTouchStartEvent: number;
 
   /** Options that apply to all the event listeners that are bound by the renderer. */
   private _eventOptions = supportsPassiveEventListeners() ? ({passive: true} as any) : false;
+
+  /**
+   * Cached dimensions of the ripple container. Set when the first
+   * ripple is shown and cleared once no more ripples are visible.
+   */
+  private _containerRect: ClientRect | null;
 
   constructor(private _target: RippleTarget,
               private _ngZone: NgZone,
@@ -98,7 +125,9 @@ export class RippleRenderer {
    * @param config Extra ripple options.
    */
   fadeInRipple(x: number, y: number, config: RippleConfig = {}): RippleRef {
-    const containerRect = this._containerElement.getBoundingClientRect();
+    const containerRect = this._containerRect =
+                          this._containerRect || this._containerElement.getBoundingClientRect();
+    const animationConfig = {...defaultRippleAnimationConfig, ...config.animation};
 
     if (config.centered) {
       x = containerRect.left + containerRect.width / 2;
@@ -106,9 +135,9 @@ export class RippleRenderer {
     }
 
     const radius = config.radius || distanceToFurthestCorner(x, y, containerRect);
-    const duration = RIPPLE_FADE_IN_DURATION / (config.speedFactor || 1);
     const offsetX = x - containerRect.left;
     const offsetY = y - containerRect.top;
+    const duration = animationConfig.enterDuration / (config.speedFactor || 1);
 
     const ripple = document.createElement('div');
     ripple.classList.add('mat-ripple-element');
@@ -138,12 +167,22 @@ export class RippleRenderer {
     // Add the ripple reference to the list of all active ripples.
     this._activeRipples.add(rippleRef);
 
+    if (!config.persistent) {
+      this._mostRecentTransientRipple = rippleRef;
+    }
+
     // Wait for the ripple element to be completely faded in.
     // Once it's faded in, the ripple can be hidden immediately if the mouse is released.
     this.runTimeoutOutsideZone(() => {
+      const isMostRecentTransientRipple = rippleRef === this._mostRecentTransientRipple;
+
       rippleRef.state = RippleState.VISIBLE;
 
-      if (!config.persistent && !this._isPointerDown) {
+      // When the timer runs out while the user has kept their pointer down, we want to
+      // keep only the persistent ripples and the latest transient ripple. We do this,
+      // because we don't want stacked transient ripples to appear after their enter
+      // animation has finished.
+      if (!config.persistent && (!isMostRecentTransientRipple || !this._isPointerDown)) {
         rippleRef.fadeOut();
       }
     }, duration);
@@ -153,23 +192,34 @@ export class RippleRenderer {
 
   /** Fades out a ripple reference. */
   fadeOutRipple(rippleRef: RippleRef) {
+    const wasActive = this._activeRipples.delete(rippleRef);
+
+    if (rippleRef === this._mostRecentTransientRipple) {
+      this._mostRecentTransientRipple = null;
+    }
+
+    // Clear out the cached bounding rect if we have no more ripples.
+    if (!this._activeRipples.size) {
+      this._containerRect = null;
+    }
+
     // For ripples that are not active anymore, don't re-un the fade-out animation.
-    if (!this._activeRipples.delete(rippleRef)) {
+    if (!wasActive) {
       return;
     }
 
     const rippleEl = rippleRef.element;
+    const animationConfig = {...defaultRippleAnimationConfig, ...rippleRef.config.animation};
 
-    rippleEl.style.transitionDuration = `${RIPPLE_FADE_OUT_DURATION}ms`;
+    rippleEl.style.transitionDuration = `${animationConfig.exitDuration}ms`;
     rippleEl.style.opacity = '0';
-
     rippleRef.state = RippleState.FADING_OUT;
 
     // Once the ripple faded out, the ripple can be safely removed from the DOM.
     this.runTimeoutOutsideZone(() => {
       rippleRef.state = RippleState.HIDDEN;
       rippleEl.parentNode!.removeChild(rippleEl);
-    }, RIPPLE_FADE_OUT_DURATION);
+    }, animationConfig.exitDuration);
   }
 
   /** Fades out all currently active ripples. */
@@ -197,7 +247,7 @@ export class RippleRenderer {
   /** Function being called whenever the trigger is being pressed using mouse. */
   private onMousedown = (event: MouseEvent) => {
     const isSyntheticEvent = this._lastTouchStartEvent &&
-        Date.now() < this._lastTouchStartEvent + IGNORE_MOUSE_EVENTS_TIMEOUT;
+        Date.now() < this._lastTouchStartEvent + ignoreMouseEventsTimeout;
 
     if (!this._target.rippleDisabled && !isSyntheticEvent) {
       this._isPointerDown = true;
@@ -227,9 +277,14 @@ export class RippleRenderer {
 
     this._isPointerDown = false;
 
-    // Fade-out all ripples that are completely visible and not persistent.
+    // Fade-out all ripples that are visible and not persistent.
     this._activeRipples.forEach(ripple => {
-      if (!ripple.config.persistent && ripple.state === RippleState.VISIBLE) {
+      // By default, only ripples that are completely visible will fade out on pointer release.
+      // If the `terminateOnPointerUp` option is set, ripples that still fade in will also fade out.
+      const isVisible = ripple.state === RippleState.VISIBLE ||
+        ripple.config.terminateOnPointerUp && ripple.state === RippleState.FADING_IN;
+
+      if (!ripple.config.persistent && isVisible) {
         ripple.fadeOut();
       }
     });

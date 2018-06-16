@@ -6,23 +6,36 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Component, ContentChild, ContentChildren, Input, QueryList, ViewChild} from '@angular/core';
 import {DataSource} from '@angular/cdk/collections';
+import {
+  AfterContentInit,
+  Component,
+  ContentChild,
+  ContentChildren,
+  Input,
+  QueryList,
+  ViewChild
+} from '@angular/core';
 import {MatColumnDef, MatHeaderRowDef, MatRowDef, MatTable} from '@angular/material';
 import {SimpleColumn} from './simple-column';
+
 
 @Component({
   moduleId: module.id,
   selector: 'wrapper-table',
   templateUrl: 'wrapper-table.html',
   styles: [`
+    :host {
+      display: block;
+      width: 100%;
+    }
+
     .mat-table {
-      height: 300px;
-      overflow: auto;
+      width: 100%;
     }
   `]
 })
-export class WrapperTable<T> {
+export class WrapperTable<T> implements AfterContentInit {
   /** Different ways the client can add column definitions */
   @ContentChildren(SimpleColumn) simpleColumns: QueryList<SimpleColumn<T>>;
   @ContentChildren(MatColumnDef) columnDefs: QueryList<MatColumnDef>;

@@ -10,14 +10,13 @@ import {Directionality} from '@angular/cdk/bidi';
 import {
   Overlay,
   OverlayConfig,
+  OverlayContainer,
   OverlayRef,
   ScrollStrategy,
-  OverlayContainer,
 } from '@angular/cdk/overlay';
 import {ComponentPortal, ComponentType, PortalInjector, TemplatePortal} from '@angular/cdk/portal';
 import {Location} from '@angular/common';
 import {
-  ComponentRef,
   Inject,
   Injectable,
   InjectionToken,
@@ -26,16 +25,14 @@ import {
   SkipSelf,
   TemplateRef,
 } from '@angular/core';
-import {Observable} from 'rxjs/Observable';
-import {defer} from 'rxjs/observable/defer';
-import {of as observableOf} from 'rxjs/observable/of';
-import {startWith} from 'rxjs/operators/startWith';
-import {Subject} from 'rxjs/Subject';
+import {defer, Observable, of as observableOf, Subject} from 'rxjs';
+import {startWith} from 'rxjs/operators';
 import {MatDialogConfig} from './dialog-config';
 import {MatDialogContainer} from './dialog-container';
 import {MatDialogRef} from './dialog-ref';
 
 
+/** Injection token that can be used to access the data that was passed in to a dialog. */
 export const MAT_DIALOG_DATA = new InjectionToken<any>('MatDialogData');
 
 /** Injection token that can be used to specify default dialog options. */
@@ -45,6 +42,11 @@ export const MAT_DIALOG_DEFAULT_OPTIONS =
 /** Injection token that determines the scroll handling while the dialog is open. */
 export const MAT_DIALOG_SCROLL_STRATEGY =
     new InjectionToken<() => ScrollStrategy>('mat-dialog-scroll-strategy');
+
+/** @docs-private */
+export function MAT_DIALOG_SCROLL_STRATEGY_FACTORY(overlay: Overlay): ()  => ScrollStrategy {
+  return () => overlay.scrollStrategies.block();
+}
 
 /** @docs-private */
 export function MAT_DIALOG_SCROLL_STRATEGY_PROVIDER_FACTORY(overlay: Overlay):
@@ -66,8 +68,8 @@ export const MAT_DIALOG_SCROLL_STRATEGY_PROVIDER = {
 @Injectable()
 export class MatDialog {
   private _openDialogsAtThisLevel: MatDialogRef<any>[] = [];
-  private _afterAllClosedAtThisLevel = new Subject<void>();
-  private _afterOpenAtThisLevel = new Subject<MatDialogRef<any>>();
+  private readonly _afterAllClosedAtThisLevel = new Subject<void>();
+  private readonly _afterOpenAtThisLevel = new Subject<MatDialogRef<any>>();
   private _ariaHiddenElements = new Map<Element, string|null>();
 
   /** Keeps track of the currently-open dialogs. */
@@ -89,26 +91,18 @@ export class MatDialog {
    * Stream that emits when all open dialog have finished closing.
    * Will emit on subscribe if there are no open dialogs to begin with.
    */
-  afterAllClosed: Observable<void> = defer<void>(() => this.openDialogs.length ?
+  readonly afterAllClosed: Observable<void> = defer<void>(() => this.openDialogs.length ?
       this._afterAllClosed :
       this._afterAllClosed.pipe(startWith(undefined)));
 
   constructor(
       private _overlay: Overlay,
       private _injector: Injector,
-      @Optional() location: Location,
+      @Optional() private _location: Location,
       @Optional() @Inject(MAT_DIALOG_DEFAULT_OPTIONS) private _defaultOptions,
       @Inject(MAT_DIALOG_SCROLL_STRATEGY) private _scrollStrategy,
       @Optional() @SkipSelf() private _parentDialog: MatDialog,
-      private _overlayContainer: OverlayContainer) {
-
-    // Close all of the dialogs when the user goes forwards/backwards in history or when the
-    // location hash changes. Note that this usually doesn't include clicking on links (unless
-    // the user is using the `HashLocationStrategy`).
-    if (!_parentDialog && location) {
-      location.subscribe(() => this.closeAll());
-    }
-  }
+      private _overlayContainer: OverlayContainer) {}
 
   /**
    * Opens a modal dialog containing the given component.
@@ -117,8 +111,8 @@ export class MatDialog {
    * @param config Extra configuration options.
    * @returns Reference to the newly-opened dialog.
    */
-  open<T, D = any>(componentOrTemplateRef: ComponentType<T> | TemplateRef<T>,
-          config?: MatDialogConfig<D>): MatDialogRef<T> {
+  open<T, D = any, R = any>(componentOrTemplateRef: ComponentType<T> | TemplateRef<T>,
+          config?: MatDialogConfig<D>): MatDialogRef<T, R> {
 
     config = _applyConfigDefaults(config, this._defaultOptions || new MatDialogConfig());
 
@@ -128,8 +122,10 @@ export class MatDialog {
 
     const overlayRef = this._createOverlay(config);
     const dialogContainer = this._attachDialogContainer(overlayRef, config);
-    const dialogRef =
-        this._attachDialogContent<T>(componentOrTemplateRef, dialogContainer, overlayRef, config);
+    const dialogRef = this._attachDialogContent<T, R>(componentOrTemplateRef,
+                                                      dialogContainer,
+                                                      overlayRef,
+                                                      config);
 
     // If this is the first dialog that we're opening, hide all the non-overlay content.
     if (!this.openDialogs.length) {
@@ -208,9 +204,13 @@ export class MatDialog {
    * @returns A promise resolving to a ComponentRef for the attached container.
    */
   private _attachDialogContainer(overlay: OverlayRef, config: MatDialogConfig): MatDialogContainer {
-    let containerPortal = new ComponentPortal(MatDialogContainer, config.viewContainerRef);
-    let containerRef: ComponentRef<MatDialogContainer> = overlay.attach(containerPortal);
-    containerRef.instance._config = config;
+    const userInjector = config && config.viewContainerRef && config.viewContainerRef.injector;
+    const injector = new PortalInjector(userInjector || this._injector, new WeakMap([
+      [MatDialogConfig, config]
+    ]));
+    const containerPortal =
+        new ComponentPortal(MatDialogContainer, config.viewContainerRef, injector);
+    const containerRef = overlay.attach<MatDialogContainer>(containerPortal);
 
     return containerRef.instance;
   }
@@ -224,15 +224,16 @@ export class MatDialog {
    * @param config The dialog configuration.
    * @returns A promise resolving to the MatDialogRef that should be returned to the user.
    */
-  private _attachDialogContent<T>(
+  private _attachDialogContent<T, R>(
       componentOrTemplateRef: ComponentType<T> | TemplateRef<T>,
       dialogContainer: MatDialogContainer,
       overlayRef: OverlayRef,
-      config: MatDialogConfig): MatDialogRef<T> {
+      config: MatDialogConfig): MatDialogRef<T, R> {
 
     // Create a reference to the dialog we're creating in order to give the user a handle
     // to modify and close it.
-    const dialogRef = new MatDialogRef<T>(overlayRef, dialogContainer, config.id);
+    const dialogRef =
+        new MatDialogRef<T, R>(overlayRef, dialogContainer, this._location, config.id);
 
     // When the dialog backdrop is clicked, we want to close it.
     if (config.hasBackdrop) {
@@ -275,19 +276,24 @@ export class MatDialog {
       dialogContainer: MatDialogContainer): PortalInjector {
 
     const userInjector = config && config.viewContainerRef && config.viewContainerRef.injector;
-    const injectionTokens = new WeakMap();
 
-    injectionTokens.set(MatDialogRef, dialogRef);
     // The MatDialogContainer is injected in the portal as the MatDialogContainer and the dialog's
     // content are created out of the same ViewContainerRef and as such, are siblings for injector
-    // purposes.  To allow the hierarchy that is expected, the MatDialogContainer is explicitly
+    // purposes. To allow the hierarchy that is expected, the MatDialogContainer is explicitly
     // added to the injection tokens.
-    injectionTokens.set(MatDialogContainer, dialogContainer);
-    injectionTokens.set(MAT_DIALOG_DATA, config.data);
-    injectionTokens.set(Directionality, {
-      value: config.direction,
-      change: observableOf()
-    });
+    const injectionTokens = new WeakMap<any, any>([
+      [MatDialogContainer, dialogContainer],
+      [MAT_DIALOG_DATA, config.data],
+      [MatDialogRef, dialogRef]
+    ]);
+
+    if (config.direction &&
+        (!userInjector || !userInjector.get<Directionality | null>(Directionality, null))) {
+      injectionTokens.set(Directionality, {
+        value: config.direction,
+        change: observableOf()
+      });
+    }
 
     return new PortalInjector(userInjector || this._injector, injectionTokens);
   }

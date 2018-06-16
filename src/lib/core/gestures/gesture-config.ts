@@ -23,12 +23,12 @@ import {
  */
 export const MAT_HAMMER_OPTIONS = new InjectionToken<HammerOptions>('MAT_HAMMER_OPTIONS');
 
-/* Adjusts configuration of our gesture library, Hammer. */
+/** Adjusts configuration of our gesture library, Hammer. */
 @Injectable()
 export class GestureConfig extends HammerGestureConfig {
   private _hammer: HammerStatic = typeof window !== 'undefined' ? (window as any).Hammer : null;
 
-  /* List of new event names to add to the gesture support list */
+  /** List of new event names to add to the gesture support list */
   events: string[] = this._hammer ? [
     'longpress',
     'slide',
@@ -51,7 +51,7 @@ export class GestureConfig extends HammerGestureConfig {
    * Builds Hammer instance manually to add custom recognizers that match the Material Design spec.
    *
    * Our gesture names come from the Material Design gestures spec:
-   * https://www.google.com/design/spec/patterns/gestures.html#gestures-touch-mechanics
+   * https://material.io/design/#gestures-touch-mechanics
    *
    * More information on default recognizers can be found in Hammer docs:
    * http://hammerjs.github.io/recognizer-pan/

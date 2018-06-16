@@ -7,7 +7,7 @@ ng_module(
   name = "tooltip",
   srcs = glob(["**/*.ts"], exclude=["**/*.spec.ts"]),
   module_name = "@angular/material/tooltip",
-  assets = [":tooltip_css"],
+  assets = [":tooltip.css"] + glob(["**/*.html"]),
   deps = [
     "//src/lib/core",
     "//src/cdk/a11y",
@@ -18,11 +18,17 @@ ng_module(
     "//src/cdk/keycodes",
     "//src/cdk/portal",
     "//src/cdk/scrolling",
+    "//src/cdk/layout",
     "@rxjs",
   ],
-  tsconfig = ":tsconfig-build.json",
+  tsconfig = "//src/lib:tsconfig-build.json",
 )
 
+# TODO(jelbourn): replace this w/ sass_library when it supports acting like a filegroup
+filegroup(
+  name = "tooltip_scss_partials",
+  srcs = glob(["**/_*.scss"]),
+)
 
 sass_binary(
   name = "tooltip_scss",
@@ -30,12 +36,7 @@ sass_binary(
   deps = ["//src/lib/core:core_scss_lib"],
 )
 
-# TODO(jelbourn): remove this when sass_binary supports specifying an output filename and dir.
-# Copy the output of the sass_binary such that the filename and path match what we expect.
-genrule(
-  name = "tooltip_css",
-  srcs = [":tooltip_scss"],
-  outs = ["tooltip.css"],
-  cmd = "cat $(locations :tooltip_scss) > $@",
+sass_library(
+  name = "theme",
+  srcs = glob(["**/*-theme.scss"]),
 )
-

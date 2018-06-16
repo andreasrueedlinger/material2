@@ -6,10 +6,11 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {Component, Input, Optional, ViewChild} from '@angular/core';
 import {coerceBooleanProperty} from '@angular/cdk/coercion';
+import {Component, Input, OnDestroy, OnInit, Optional, ViewChild} from '@angular/core';
 import {MatSortHeader} from '@angular/material/sort';
-import {MatColumnDef, MatTable} from '@angular/material';
+import {MatColumnDef, MatTable} from '@angular/material/table';
+
 
 /**
  * Column that shows simply shows text content for the header and row
@@ -26,13 +27,8 @@ import {MatColumnDef, MatTable} from '@angular/material';
   selector: 'simple-column',
   template: `
     <ng-container matColumnDef>
-      <mat-header-cell *matHeaderCellDef mat-sort-header>
-        {{label || name}}
-      </mat-header-cell>
-
-      <mat-cell *matCellDef="let data">
-        {{getData(data)}}
-      </mat-cell>
+      <th mat-header-cell *matHeaderCellDef mat-sort-header> {{label || name}} </th>
+      <td mat-cell *matCellDef="let data"> {{getData(data)}}</td>
     </ng-container>
   `,
   host: {
@@ -40,7 +36,7 @@ import {MatColumnDef, MatTable} from '@angular/material';
     '[attr.ariaHidden]': 'true',
   }
 })
-export class SimpleColumn<T> {
+export class SimpleColumn<T> implements OnDestroy, OnInit {
   /** Column name that should be used to reference this column. */
   @Input()
   get name(): string { return this._name; }
@@ -93,6 +89,6 @@ export class SimpleColumn<T> {
   }
 
   getData(data: T): any {
-    return this.dataAccessor ? this.dataAccessor(data, this.name) : (<any>data)[this.name];
+    return this.dataAccessor ? this.dataAccessor(data, this.name) : (data as any)[this.name];
   }
 }

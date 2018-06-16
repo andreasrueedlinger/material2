@@ -4,13 +4,12 @@ import {createKeyboardEvent} from '@angular/cdk/testing';
 import {Component, DebugElement} from '@angular/core';
 import {async, ComponentFixture, TestBed} from '@angular/core/testing';
 import {By} from '@angular/platform-browser';
-import {MatChip, MatChipEvent, MatChipList, MatChipSelectionChange, MatChipsModule} from './index';
+import {MatChip, MatChipEvent, MatChipSelectionChange, MatChipsModule} from './index';
 
 
 describe('Chips', () => {
   let fixture: ComponentFixture<any>;
   let chipDebugElement: DebugElement;
-  let chipListNativeElement: HTMLElement;
   let chipNativeElement: HTMLElement;
   let chipInstance: MatChip;
 
@@ -59,7 +58,6 @@ describe('Chips', () => {
       fixture.detectChanges();
 
       chipDebugElement = fixture.debugElement.query(By.directive(MatChip));
-      chipListNativeElement = fixture.debugElement.query(By.directive(MatChipList)).nativeElement;
       chipNativeElement = chipDebugElement.nativeElement;
       chipInstance = chipDebugElement.injector.get(MatChip);
       testComponent = fixture.debugElement.componentInstance;
@@ -81,12 +79,17 @@ describe('Chips', () => {
         expect(chipNativeElement.classList).not.toContain('mat-basic-chip');
       });
 
-      it('emits focus on click', () => {
-        spyOn(chipInstance, 'focus').and.callThrough();
+      it('emits focus only once for multiple clicks', () => {
+        let counter = 0;
+        chipInstance._onFocus.subscribe(() => {
+          counter ++ ;
+        });
 
-        chipNativeElement.click();
+        chipNativeElement.focus();
+        chipNativeElement.focus();
+        fixture.detectChanges();
 
-        expect(chipInstance.focus).toHaveBeenCalledTimes(1);
+        expect(counter).toBe(1);
       });
 
       it('emits destroy on destruction', () => {
@@ -212,7 +215,7 @@ describe('Chips', () => {
           fixture.detectChanges();
         });
 
-        it('DELETE emits the (remove) event', () => {
+        it('DELETE emits the (removed) event', () => {
           const DELETE_EVENT = createKeyboardEvent('keydown', DELETE) as KeyboardEvent;
 
           spyOn(testComponent, 'chipRemove');
@@ -224,7 +227,7 @@ describe('Chips', () => {
           expect(testComponent.chipRemove).toHaveBeenCalled();
         });
 
-        it('BACKSPACE emits the (remove) event', () => {
+        it('BACKSPACE emits the (removed) event', () => {
           const BACKSPACE_EVENT = createKeyboardEvent('keydown', BACKSPACE) as KeyboardEvent;
 
           spyOn(testComponent, 'chipRemove');
@@ -243,7 +246,7 @@ describe('Chips', () => {
           fixture.detectChanges();
         });
 
-        it('DELETE does not emit the (remove) event', () => {
+        it('DELETE does not emit the (removed) event', () => {
           const DELETE_EVENT = createKeyboardEvent('keydown', DELETE) as KeyboardEvent;
 
           spyOn(testComponent, 'chipRemove');
@@ -255,7 +258,7 @@ describe('Chips', () => {
           expect(testComponent.chipRemove).not.toHaveBeenCalled();
         });
 
-        it('BACKSPACE does not emit the (remove) event', () => {
+        it('BACKSPACE does not emit the (removed) event', () => {
           const BACKSPACE_EVENT = createKeyboardEvent('keydown', BACKSPACE) as KeyboardEvent;
 
           spyOn(testComponent, 'chipRemove');

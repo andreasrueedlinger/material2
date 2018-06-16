@@ -22,7 +22,6 @@ import {matSnackBarAnimations} from './snack-bar-animations';
   templateUrl: 'simple-snack-bar.html',
   styleUrls: ['simple-snack-bar.css'],
   encapsulation: ViewEncapsulation.None,
-  preserveWhitespaces: false,
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [matSnackBarAnimations.contentFade],
   host: {
@@ -42,7 +41,7 @@ export class SimpleSnackBar {
 
   /** Performs the action on the snack bar. */
   action(): void {
-    this.snackBarRef.closeWithAction();
+    this.snackBarRef.dismissWithAction();
   }
 
   /** If the action button should be shown. */

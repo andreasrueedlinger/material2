@@ -56,7 +56,7 @@ export class MatDialogConfig<D = any> {
   /** Custom class for the backdrop, */
   backdropClass?: string = '';
 
-  /** Whether the user can use escape or clicking outside to close a modal. */
+  /** Whether the user can use escape or clicking on the backdrop to close the modal. */
   disableClose?: boolean = false;
 
   /** Width of the dialog. */
@@ -84,9 +84,9 @@ export class MatDialogConfig<D = any> {
   data?: D | null = null;
 
   /** Layout direction for the dialog's content. */
-  direction?: Direction = 'ltr';
+  direction?: Direction;
 
-  /** ID of the element that describes the dialog.  */
+  /** ID of the element that describes the dialog. */
   ariaDescribedBy?: string | null = null;
 
   /** Aria label to assign to the dialog element */
@@ -97,6 +97,9 @@ export class MatDialogConfig<D = any> {
 
   /** Scroll strategy to be used for the dialog. */
   scrollStrategy?: ScrollStrategy;
+
+  /** Whether the dialog should close when the user goes backwards/forwards in history. */
+  closeOnNavigation?: boolean = true;
 
   // TODO(jelbourn): add configuration for lifecycle hooks, ARIA labelling.
 }

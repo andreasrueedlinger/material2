@@ -45,12 +45,8 @@ npm install --save @angular/animations
 
 #### Yarn
 ```bash
-yarn install @angular/animations
+yarn add @angular/animations
 ```
-
-**Note:** `@angular/animations` uses the WebAnimation API that isn't supported by all browsers yet.
-If you want to support Material component animations in these browsers, you'll have to
-[include a polyfill](https://github.com/web-animations/web-animations-js).
 
 ```ts
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
@@ -135,8 +131,15 @@ You can add HammerJS to your application via [npm](https://www.npmjs.com/package
 directly from your app.
 
 To install via npm, use the following command:
+
+#### NPM
 ```bash
 npm install --save hammerjs
+```
+
+#### Yarn
+```bash
+yarn add hammerjs
 ```
 
 After installing, import it on your app's entry point (e.g. `src/main.ts`).
@@ -182,6 +185,12 @@ System.config({
     '@angular/cdk/platform': 'npm:@angular/cdk/bundles/cdk-platform.umd.js',
     '@angular/cdk/a11y': 'npm:@angular/cdk/bundles/cdk-a11y.umd.js',
     // ...
+    'hammerjs': 'npm:hammerjs',
+  },
+  packages: {
+    //...
+    hammerjs: {main: './hammer.min.js', defaultExtension: 'js'}
+    //...
   }
 });
 ```

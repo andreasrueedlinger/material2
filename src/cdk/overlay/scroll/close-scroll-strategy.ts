@@ -7,8 +7,8 @@
  */
 import {NgZone} from '@angular/core';
 import {ScrollStrategy, getMatScrollStrategyAlreadyAttachedError} from './scroll-strategy';
-import {OverlayRef} from '../overlay-ref';
-import {Subscription} from 'rxjs/Subscription';
+import {OverlayReference} from '../overlay-reference';
+import {Subscription} from 'rxjs';
 import {ScrollDispatcher, ViewportRuler} from '@angular/cdk/scrolling';
 
 /**
@@ -24,7 +24,7 @@ export interface CloseScrollStrategyConfig {
  */
 export class CloseScrollStrategy implements ScrollStrategy {
   private _scrollSubscription: Subscription|null = null;
-  private _overlayRef: OverlayRef;
+  private _overlayRef: OverlayReference;
   private _initialScrollPosition: number;
 
   constructor(
@@ -34,7 +34,7 @@ export class CloseScrollStrategy implements ScrollStrategy {
     private _config?: CloseScrollStrategyConfig) {}
 
   /** Attaches this scroll strategy to an overlay. */
-  attach(overlayRef: OverlayRef) {
+  attach(overlayRef: OverlayReference) {
     if (this._overlayRef) {
       throw getMatScrollStrategyAlreadyAttachedError();
     }

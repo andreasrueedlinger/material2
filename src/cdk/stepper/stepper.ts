@@ -6,33 +6,35 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {FocusableOption, FocusKeyManager} from '@angular/cdk/a11y';
+import {Direction, Directionality} from '@angular/cdk/bidi';
+import {coerceBooleanProperty} from '@angular/cdk/coercion';
+import {END, ENTER, HOME, SPACE} from '@angular/cdk/keycodes';
 import {
-  ContentChildren,
-  EventEmitter,
-  Input,
-  Output,
-  QueryList,
-  Directive,
-  ElementRef,
-  Component,
-  ContentChild,
-  ViewChild,
-  TemplateRef,
-  ViewEncapsulation,
-  Optional,
-  Inject,
-  forwardRef,
+  AfterViewInit,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  Component,
+  ContentChild,
+  ContentChildren,
+  Directive,
+  EventEmitter,
+  forwardRef,
+  Inject,
+  Input,
   OnChanges,
-  OnDestroy
+  OnDestroy,
+  Optional,
+  Output,
+  QueryList,
+  TemplateRef,
+  ViewChild,
+  ViewEncapsulation,
 } from '@angular/core';
-import {LEFT_ARROW, RIGHT_ARROW, DOWN_ARROW, UP_ARROW, ENTER, SPACE} from '@angular/cdk/keycodes';
-import {CdkStepLabel} from './step-label';
-import {coerceBooleanProperty} from '@angular/cdk/coercion';
 import {AbstractControl} from '@angular/forms';
-import {Direction, Directionality} from '@angular/cdk/bidi';
-import {Subject} from 'rxjs/Subject';
+import {CdkStepLabel} from './step-label';
+import {Observable, Subject, of as obaservableOf} from 'rxjs';
+import {startWith, takeUntil} from 'rxjs/operators';
 
 /** Used to generate unique ID for each stepper component. */
 let nextId = 0;
@@ -65,9 +67,8 @@ export class StepperSelectionEvent {
   moduleId: module.id,
   selector: 'cdk-step',
   exportAs: 'cdkStep',
-  templateUrl: 'step.html',
+  template: '<ng-template><ng-content></ng-content></ng-template>',
   encapsulation: ViewEncapsulation.None,
-  preserveWhitespaces: false,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdkStep implements OnChanges {
@@ -123,6 +124,19 @@ export class CdkStep implements OnChanges {
     this._stepper.selected = this;
   }
 
+  /** Resets the step to its initial state. Note that this includes resetting form data. */
+  reset(): void {
+    this.interacted = false;
+
+    if (this._customCompleted != null) {
+      this._customCompleted = false;
+    }
+
+    if (this.stepControl) {
+      this.stepControl.reset();
+    }
+  }
+
   ngOnChanges() {
     // Since basically all inputs of the MatStep get proxied through the view down to the
     // underlying MatStepHeader, we have to make sure that change detection runs correctly.
@@ -134,15 +148,18 @@ export class CdkStep implements OnChanges {
   selector: '[cdkStepper]',
   exportAs: 'cdkStepper',
 })
-export class CdkStepper implements OnDestroy {
+export class CdkStepper implements AfterViewInit, OnDestroy {
   /** Emits when the component is destroyed. */
   protected _destroyed = new Subject<void>();
+
+  /** Used for managing keyboard focus. */
+  private _keyManager: FocusKeyManager<FocusableOption>;
 
   /** The list of step components that the stepper is holding. */
   @ContentChildren(CdkStep) _steps: QueryList<CdkStep>;
 
   /** The list of step headers of the steps in the stepper. */
-  _stepHeader: QueryList<ElementRef>;
+  _stepHeader: QueryList<FocusableOption>;
 
   /** Whether the validity of previous steps should be checked or not. */
   @Input()
@@ -155,32 +172,35 @@ export class CdkStepper implements OnDestroy {
   get selectedIndex() { return this._selectedIndex; }
   set selectedIndex(index: number) {
     if (this._steps) {
-      if (this._anyControlsInvalidOrPending(index) || index < this._selectedIndex &&
-          !this._steps.toArray()[index].editable) {
-        // remove focus from clicked step header if the step is not able to be selected
-        this._stepHeader.toArray()[index].nativeElement.blur();
-      } else if (this._selectedIndex != index) {
-        this._emitStepperSelectionEvent(index);
-        this._focusIndex = this._selectedIndex;
+      // Ensure that the index can't be out of bounds.
+      if (index < 0 || index > this._steps.length - 1) {
+        throw Error('cdkStepper: Cannot assign out-of-bounds value to `selectedIndex`.');
+      }
+
+      if (this._selectedIndex != index &&
+          !this._anyControlsInvalidOrPending(index) &&
+          (index >= this._selectedIndex || this._steps.toArray()[index].editable)) {
+        this._updateSelectedItemIndex(index);
       }
     } else {
-      this._selectedIndex = this._focusIndex = index;
+      this._selectedIndex = index;
     }
   }
-  private _selectedIndex: number = 0;
+  private _selectedIndex = 0;
 
   /** The step that is selected. */
   @Input()
-  get selected() { return this._steps.toArray()[this.selectedIndex]; }
+  get selected(): CdkStep {
+    // @deletion-target 7.0.0 Change return type to `CdkStep | undefined`.
+    return this._steps ? this._steps.toArray()[this.selectedIndex] : undefined!;
+  }
   set selected(step: CdkStep) {
-    this.selectedIndex = this._steps.toArray().indexOf(step);
+    this.selectedIndex = this._steps ? this._steps.toArray().indexOf(step) : -1;
   }
 
   /** Event emitted when the selected step has changed. */
-  @Output() selectionChange = new EventEmitter<StepperSelectionEvent>();
-
-  /** The index of the step that the focus can be set. */
-  _focusIndex: number = 0;
+  @Output() selectionChange: EventEmitter<StepperSelectionEvent>
+      = new EventEmitter<StepperSelectionEvent>();
 
   /** Used to track unique ID for each stepper component. */
   _groupId: number;
@@ -191,6 +211,18 @@ export class CdkStepper implements OnDestroy {
     @Optional() private _dir: Directionality,
     private _changeDetectorRef: ChangeDetectorRef) {
     this._groupId = nextId++;
+  }
+
+  ngAfterViewInit() {
+    this._keyManager = new FocusKeyManager(this._stepHeader)
+      .withWrap()
+      .withVerticalOrientation(this._orientation === 'vertical');
+
+    (this._dir ? this._dir.change as Observable<Direction> : obaservableOf())
+      .pipe(startWith(this._layoutDirection()), takeUntil(this._destroyed))
+      .subscribe(direction => this._keyManager.withHorizontalOrientation(direction));
+
+    this._keyManager.updateActiveItemIndex(this._selectedIndex);
   }
 
   ngOnDestroy() {
@@ -206,6 +238,13 @@ export class CdkStepper implements OnDestroy {
   /** Selects and focuses the previous step in list. */
   previous(): void {
     this.selectedIndex = Math.max(this._selectedIndex - 1, 0);
+  }
+
+  /** Resets the stepper to its initial state. Note that this includes clearing form data. */
+  reset(): void {
+    this._updateSelectedItemIndex(0);
+    this._steps.forEach(step => step.reset());
+    this._stateChanged();
   }
 
   /** Returns a unique id for each step label element. */
@@ -244,7 +283,12 @@ export class CdkStepper implements OnDestroy {
     }
   }
 
-  private _emitStepperSelectionEvent(newIndex: number): void {
+  /** Returns the index of the currently-focused step header. */
+  _getFocusIndex() {
+    return this._keyManager ? this._keyManager.activeItemIndex : this._selectedIndex;
+  }
+
+  private _updateSelectedItemIndex(newIndex: number): void {
     const stepsArray = this._steps.toArray();
     this.selectionChange.emit({
       selectedIndex: newIndex,
@@ -252,6 +296,7 @@ export class CdkStepper implements OnDestroy {
       selectedStep: stepsArray[newIndex],
       previouslySelectedStep: stepsArray[this._selectedIndex],
     });
+    this._keyManager.updateActiveItemIndex(newIndex);
     this._selectedIndex = newIndex;
     this._stateChanged();
   }
@@ -259,41 +304,18 @@ export class CdkStepper implements OnDestroy {
   _onKeydown(event: KeyboardEvent) {
     const keyCode = event.keyCode;
 
-    // Note that the left/right arrows work both in vertical and horizontal mode.
-    if (keyCode === RIGHT_ARROW) {
-      this._layoutDirection() === 'rtl' ? this._focusPreviousStep() : this._focusNextStep();
+    if (this._keyManager.activeItemIndex != null && (keyCode === SPACE || keyCode === ENTER)) {
+      this.selectedIndex = this._keyManager.activeItemIndex;
       event.preventDefault();
-    }
-
-    if (keyCode === LEFT_ARROW) {
-      this._layoutDirection() === 'rtl' ? this._focusNextStep() : this._focusPreviousStep();
+    } else if (keyCode === HOME) {
+      this._keyManager.setFirstItemActive();
       event.preventDefault();
-    }
-
-    // Note that the up/down arrows only work in vertical mode.
-    // See: https://www.w3.org/TR/wai-aria-practices-1.1/#tabpanel
-    if (this._orientation === 'vertical' && (keyCode === UP_ARROW || keyCode === DOWN_ARROW)) {
-      keyCode === UP_ARROW ? this._focusPreviousStep() : this._focusNextStep();
+    } else if (keyCode === END) {
+      this._keyManager.setLastItemActive();
       event.preventDefault();
+    } else {
+      this._keyManager.onKeydown(event);
     }
-
-    if (keyCode === SPACE || keyCode === ENTER) {
-      this.selectedIndex = this._focusIndex;
-      event.preventDefault();
-    }
-  }
-
-  private _focusNextStep() {
-    this._focusStep((this._focusIndex + 1) % this._steps.length);
-  }
-
-  private _focusPreviousStep() {
-    this._focusStep((this._focusIndex + this._steps.length - 1) % this._steps.length);
-  }
-
-  private _focusStep(index: number) {
-    this._focusIndex = index;
-    this._stepHeader.toArray()[this._focusIndex].nativeElement.focus();
   }
 
   private _anyControlsInvalidOrPending(index: number): boolean {
@@ -304,7 +326,10 @@ export class CdkStepper implements OnDestroy {
     if (this._linear && index >= 0) {
       return steps.slice(0, index).some(step => {
         const control = step.stepControl;
-        return control ? (control.invalid || control.pending) : !step.completed;
+        const isIncomplete = control ?
+            (control.invalid || control.pending || !step.interacted) :
+            !step.completed;
+        return isIncomplete && !step.optional;
       });
     }
 

@@ -27,21 +27,22 @@ export class FirebaseService {
 
 
   /** Get the firebase storage test image folder url */
-  getTestScreenshotImageUrl(filename: string): firebase.Promise<string> {
+  getTestScreenshotImageUrl(filename: string): Promise<string> {
     return this._storageRef().child('test').child(filename).getDownloadURL();
   }
 
   /** Get the firebase storage diff image folder url */
-  getDiffScreenshotImageUrl(filename: string): firebase.Promise<string> {
+  getDiffScreenshotImageUrl(filename: string): Promise<string> {
     return this._storageRef().child('diff').child(filename).getDownloadURL();
   }
 
   /** Get the firebase storage golden image folder url */
-  getGoldScreenshotImageUrl(filename: string): firebase.Promise<string> {
+  getGoldScreenshotImageUrl(filename: string): Promise<string> {
     return firebase.storage().ref('goldens').child(filename).getDownloadURL();
   }
 
-  /** Set pull request number. All test information and pull request information will be retrived
+  /**
+   * Set pull request number. All test information and pull request information will be retrived
    * from database
    */
   set prNumber(prNumber: string) {
@@ -77,7 +78,7 @@ export class FirebaseService {
     });
   }
 
-  signIntoGithub(): firebase.Promise<void> {
+  signIntoGithub(): Promise<void> {
     return firebase.auth().signInWithRedirect(new firebase.auth.GithubAuthProvider());
   }
 
