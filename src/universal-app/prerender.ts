@@ -1,27 +1,34 @@
-import {renderModuleFactory} from '@angular/platform-server';
-import {readFileSync, writeFileSync} from 'fs-extra';
-import {log} from 'gulp-util';
-import {join} from 'path';
 import 'reflect-metadata';
 import 'zone.js';
-import {KitchenSinkServerModuleNgFactory} from './kitchen-sink/kitchen-sink.ngfactory';
+
+import {renderModuleFactory} from '@angular/platform-server';
+import {readFileSync, writeFileSync} from 'fs';
+import {join} from 'path';
+
+import {KitchenSinkRootServerModuleNgFactory} from './kitchen-sink-root.ngfactory';
 
 // Do not enable production mode, because otherwise the `MatCommonModule` won't execute
 // the browser related checks that could cause NodeJS issues.
 
-const result = renderModuleFactory(KitchenSinkServerModuleNgFactory, {
-  document: readFileSync(join(__dirname, 'index.html'), 'utf-8')
-});
+// Resolve the path to the "index.html" through Bazel runfile resolution.
+const indexHtmlPath = require.resolve('./index.html');
+
+const result = renderModuleFactory(
+    KitchenSinkRootServerModuleNgFactory,
+    {document: readFileSync(indexHtmlPath, 'utf-8')});
 
 result
   .then(content => {
     const filename = join(__dirname, 'index-prerendered.html');
 
-    console.log(`Outputting result to ${filename}`);
+    console.log('Inspect pre-rendered page here:');
+    console.log(`file://${filename}`);
     writeFileSync(filename, content, 'utf-8');
-    log('Prerender done.');
+    console.log('Prerender done.');
   })
-  // If rendering the module factory fails, exit the process with an error code because otherwise
-  // the CI task will not recognize the failure and will show as "success". The error message
-  // will be printed automatically by the `renderModuleFactory` method.
-  .catch(() => process.exit(1));
+  // If rendering the module factory fails, print the error and exit the process
+  // with a non-zero exit code.
+  .catch(error => {
+    console.error(error);
+    process.exit(1);
+  });

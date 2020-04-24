@@ -6,6 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {BooleanInput} from '@angular/cdk/coercion';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,13 +15,17 @@ import {
   IterableDiffer,
   IterableDiffers,
   OnChanges,
+  OnDestroy,
   SimpleChanges,
   TemplateRef,
   ViewContainerRef,
   ViewEncapsulation,
+  Inject,
+  Optional
 } from '@angular/core';
+import {CanStick, CanStickCtor, mixinHasStickyInput} from './can-stick';
 import {CdkCellDef, CdkColumnDef} from './cell';
-import {CanStick, mixinHasStickyInput} from './can-stick';
+import {CDK_TABLE} from './tokens';
 
 /**
  * The row template that can be used by the mat-table. Should not be used outside of the
@@ -39,8 +44,9 @@ export abstract class BaseRowDef implements OnChanges {
   /** Differ used to check if any changes were made to the columns. */
   protected _columnsDiffer: IterableDiffer<any>;
 
-  constructor(/** @docs-private */ public template: TemplateRef<any>,
-              protected _differs: IterableDiffers) { }
+  constructor(
+      /** @docs-private */ public template: TemplateRef<any>, protected _differs: IterableDiffers) {
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     // Create a new columns differ if one does not yet exist. Initialize it based on initial value
@@ -56,7 +62,7 @@ export abstract class BaseRowDef implements OnChanges {
    * Returns the difference between the current columns and the columns from the last diff, or null
    * if there is no difference.
    */
-  getColumnsDiff(): IterableChanges<any> | null {
+  getColumnsDiff(): IterableChanges<any>|null {
     return this._columnsDiffer.diff(this.columns);
   }
 
@@ -64,7 +70,8 @@ export abstract class BaseRowDef implements OnChanges {
   extractCellTemplate(column: CdkColumnDef): TemplateRef<any> {
     if (this instanceof CdkHeaderRowDef) {
       return column.headerCell.template;
-    } if (this instanceof CdkFooterRowDef) {
+    }
+    if (this instanceof CdkFooterRowDef) {
       return column.footerCell.template;
     } else {
       return column.cell.template;
@@ -74,8 +81,9 @@ export abstract class BaseRowDef implements OnChanges {
 
 // Boilerplate for applying mixins to CdkHeaderRowDef.
 /** @docs-private */
-export class CdkHeaderRowDefBase extends BaseRowDef {}
-export const _CdkHeaderRowDefBase = mixinHasStickyInput(CdkHeaderRowDefBase);
+class CdkHeaderRowDefBase extends BaseRowDef {}
+const _CdkHeaderRowDefBase: CanStickCtor&typeof CdkHeaderRowDefBase =
+    mixinHasStickyInput(CdkHeaderRowDefBase);
 
 /**
  * Header row definition for the CDK table.
@@ -86,7 +94,10 @@ export const _CdkHeaderRowDefBase = mixinHasStickyInput(CdkHeaderRowDefBase);
   inputs: ['columns: cdkHeaderRowDef', 'sticky: cdkHeaderRowDefSticky'],
 })
 export class CdkHeaderRowDef extends _CdkHeaderRowDefBase implements CanStick, OnChanges {
-  constructor(template: TemplateRef<any>, _differs: IterableDiffers) {
+  constructor(
+    template: TemplateRef<any>,
+    _differs: IterableDiffers,
+    @Inject(CDK_TABLE) @Optional() public _table?: any) {
     super(template, _differs);
   }
 
@@ -95,12 +106,15 @@ export class CdkHeaderRowDef extends _CdkHeaderRowDefBase implements CanStick, O
   ngOnChanges(changes: SimpleChanges): void {
     super.ngOnChanges(changes);
   }
+
+  static ngAcceptInputType_sticky: BooleanInput;
 }
 
 // Boilerplate for applying mixins to CdkFooterRowDef.
 /** @docs-private */
-export class CdkFooterRowDefBase extends BaseRowDef {}
-export const _CdkFooterRowDefBase = mixinHasStickyInput(CdkFooterRowDefBase);
+class CdkFooterRowDefBase extends BaseRowDef {}
+const _CdkFooterRowDefBase: CanStickCtor&typeof CdkFooterRowDefBase =
+    mixinHasStickyInput(CdkFooterRowDefBase);
 
 /**
  * Footer row definition for the CDK table.
@@ -111,7 +125,10 @@ export const _CdkFooterRowDefBase = mixinHasStickyInput(CdkFooterRowDefBase);
   inputs: ['columns: cdkFooterRowDef', 'sticky: cdkFooterRowDefSticky'],
 })
 export class CdkFooterRowDef extends _CdkFooterRowDefBase implements CanStick, OnChanges {
-  constructor(template: TemplateRef<any>, _differs: IterableDiffers) {
+  constructor(
+    template: TemplateRef<any>,
+    _differs: IterableDiffers,
+    @Inject(CDK_TABLE) @Optional() public _table?: any) {
     super(template, _differs);
   }
 
@@ -120,6 +137,8 @@ export class CdkFooterRowDef extends _CdkFooterRowDefBase implements CanStick, O
   ngOnChanges(changes: SimpleChanges): void {
     super.ngOnChanges(changes);
   }
+
+  static ngAcceptInputType_sticky: BooleanInput;
 }
 
 /**
@@ -142,7 +161,10 @@ export class CdkRowDef<T> extends BaseRowDef {
 
   // TODO(andrewseguin): Add an input for providing a switch function to determine
   //   if this template should be used.
-  constructor(template: TemplateRef<any>, _differs: IterableDiffers) {
+  constructor(
+    template: TemplateRef<any>,
+    _differs: IterableDiffers,
+    @Inject(CDK_TABLE) @Optional() public _table?: any) {
     super(template, _differs);
   }
 }
@@ -207,7 +229,7 @@ export interface CdkCellOutletMultiRowContext<T> {
  * @docs-private
  */
 @Directive({selector: '[cdkCellOutlet]'})
-export class CdkCellOutlet {
+export class CdkCellOutlet implements OnDestroy {
   /** The ordered list of cells to render within this outlet's view container */
   cells: CdkCellDef[];
 
@@ -221,52 +243,74 @@ export class CdkCellOutlet {
    * a handle to provide that component's cells and context. After init, the CdkCellOutlet will
    * construct the cells with the provided context.
    */
-  static mostRecentCellOutlet: CdkCellOutlet | null = null;
+  static mostRecentCellOutlet: CdkCellOutlet|null = null;
 
   constructor(public _viewContainer: ViewContainerRef) {
     CdkCellOutlet.mostRecentCellOutlet = this;
+  }
+
+  ngOnDestroy() {
+    // If this was the last outlet being rendered in the view, remove the reference
+    // from the static property after it has been destroyed to avoid leaking memory.
+    if (CdkCellOutlet.mostRecentCellOutlet === this) {
+      CdkCellOutlet.mostRecentCellOutlet = null;
+    }
   }
 }
 
 /** Header template container that contains the cell outlet. Adds the right class and role. */
 @Component({
-  moduleId: module.id,
   selector: 'cdk-header-row, tr[cdk-header-row]',
   template: CDK_ROW_TEMPLATE,
   host: {
     'class': 'cdk-header-row',
     'role': 'row',
   },
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  // See note on CdkTable for explanation on why this uses the default change detection strategy.
+  // tslint:disable-next-line:validate-decorators
+  changeDetection: ChangeDetectionStrategy.Default,
   encapsulation: ViewEncapsulation.None,
 })
-export class CdkHeaderRow { }
+export class CdkHeaderRow {
+}
 
 
 /** Footer template container that contains the cell outlet. Adds the right class and role. */
 @Component({
-  moduleId: module.id,
   selector: 'cdk-footer-row, tr[cdk-footer-row]',
   template: CDK_ROW_TEMPLATE,
   host: {
     'class': 'cdk-footer-row',
     'role': 'row',
   },
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  // See note on CdkTable for explanation on why this uses the default change detection strategy.
+  // tslint:disable-next-line:validate-decorators
+  changeDetection: ChangeDetectionStrategy.Default,
   encapsulation: ViewEncapsulation.None,
 })
-export class CdkFooterRow { }
+export class CdkFooterRow {
+}
 
 /** Data row template container that contains the cell outlet. Adds the right class and role. */
 @Component({
-  moduleId: module.id,
   selector: 'cdk-row, tr[cdk-row]',
   template: CDK_ROW_TEMPLATE,
   host: {
     'class': 'cdk-row',
     'role': 'row',
   },
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  // See note on CdkTable for explanation on why this uses the default change detection strategy.
+  // tslint:disable-next-line:validate-decorators
+  changeDetection: ChangeDetectionStrategy.Default,
   encapsulation: ViewEncapsulation.None,
 })
-export class CdkRow { }
+export class CdkRow {
+}
+
+/** Row that can be used to display a message when no data is shown in the table. */
+@Directive({
+  selector: 'ng-template[cdkNoDataRow]'
+})
+export class CdkNoDataRow {
+  constructor(public templateRef: TemplateRef<any>) {}
+}

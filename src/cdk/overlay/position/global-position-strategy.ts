@@ -9,6 +9,8 @@
 import {PositionStrategy} from './position-strategy';
 import {OverlayReference} from '../overlay-reference';
 
+/** Class to be added to the overlay pane wrapper. */
+const wrapperClass = 'cdk-global-overlay-wrapper';
 
 /**
  * A strategy for positioning overlays. Using this strategy, an overlay is given an
@@ -28,6 +30,7 @@ export class GlobalPositionStrategy implements PositionStrategy {
   private _justifyContent: string = '';
   private _width: string = '';
   private _height: string = '';
+  private _isDisposed: boolean;
 
   attach(overlayRef: OverlayReference): void {
     const config = overlayRef.getConfig();
@@ -42,7 +45,8 @@ export class GlobalPositionStrategy implements PositionStrategy {
       overlayRef.updateSize({height: this._height});
     }
 
-    overlayRef.hostElement.classList.add('cdk-global-overlay-wrapper');
+    overlayRef.hostElement.classList.add(wrapperClass);
+    this._isDisposed = false;
   }
 
   /**
@@ -93,7 +97,7 @@ export class GlobalPositionStrategy implements PositionStrategy {
    * Sets the overlay width and clears any previously set width.
    * @param value New width for the overlay
    * @deprecated Pass the `width` through the `OverlayConfig`.
-   * @deletion-target 7.0.0
+   * @breaking-change 8.0.0
    */
   width(value: string = ''): this {
     if (this._overlayRef) {
@@ -109,7 +113,7 @@ export class GlobalPositionStrategy implements PositionStrategy {
    * Sets the overlay height and clears any previously set height.
    * @param value New height for the overlay
    * @deprecated Pass the `height` through the `OverlayConfig`.
-   * @deletion-target 7.0.0
+   * @breaking-change 8.0.0
    */
   height(value: string = ''): this {
     if (this._overlayRef) {
@@ -153,22 +157,29 @@ export class GlobalPositionStrategy implements PositionStrategy {
     // Since the overlay ref applies the strategy asynchronously, it could
     // have been disposed before it ends up being applied. If that is the
     // case, we shouldn't do anything.
-    if (!this._overlayRef.hasAttached()) {
+    if (!this._overlayRef || !this._overlayRef.hasAttached()) {
       return;
     }
 
     const styles = this._overlayRef.overlayElement.style;
     const parentStyles = this._overlayRef.hostElement.style;
     const config = this._overlayRef.getConfig();
+    const {width, height, maxWidth, maxHeight} = config;
+    const shouldBeFlushHorizontally = (width === '100%' || width === '100vw') &&
+                                      (!maxWidth || maxWidth === '100%' || maxWidth === '100vw');
+    const shouldBeFlushVertically = (height === '100%' || height === '100vh') &&
+                                    (!maxHeight || maxHeight === '100%' || maxHeight === '100vh');
 
     styles.position = this._cssPosition;
-    styles.marginLeft = config.width === '100%' ? '0' : this._leftOffset;
-    styles.marginTop = config.height === '100%' ? '0' : this._topOffset;
+    styles.marginLeft = shouldBeFlushHorizontally ? '0' : this._leftOffset;
+    styles.marginTop = shouldBeFlushVertically ? '0' : this._topOffset;
     styles.marginBottom = this._bottomOffset;
     styles.marginRight = this._rightOffset;
 
-    if (config.width === '100%') {
+    if (shouldBeFlushHorizontally) {
       parentStyles.justifyContent = 'flex-start';
+    } else if (this._justifyContent === 'center') {
+      parentStyles.justifyContent = 'center';
     } else if (this._overlayRef.getConfig().direction === 'rtl') {
       // In RTL the browser will invert `flex-start` and `flex-end` automatically, but we
       // don't want that because our positioning is explicitly `left` and `right`, hence
@@ -183,12 +194,27 @@ export class GlobalPositionStrategy implements PositionStrategy {
       parentStyles.justifyContent = this._justifyContent;
     }
 
-    parentStyles.alignItems = config.height === '100%' ? 'flex-start' : this._alignItems;
+    parentStyles.alignItems = shouldBeFlushVertically ? 'flex-start' : this._alignItems;
   }
 
   /**
-   * Noop implemented as a part of the PositionStrategy interface.
+   * Cleans up the DOM changes from the position strategy.
    * @docs-private
    */
-  dispose(): void { }
+  dispose(): void {
+    if (this._isDisposed || !this._overlayRef) {
+      return;
+    }
+
+    const styles = this._overlayRef.overlayElement.style;
+    const parent = this._overlayRef.hostElement;
+    const parentStyles = parent.style;
+
+    parent.classList.remove(wrapperClass);
+    parentStyles.justifyContent = parentStyles.alignItems = styles.marginTop =
+      styles.marginBottom = styles.marginLeft = styles.marginRight = styles.position = '';
+
+    this._overlayRef = null!;
+    this._isDisposed = true;
+  }
 }

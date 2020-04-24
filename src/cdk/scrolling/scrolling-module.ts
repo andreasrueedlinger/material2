@@ -6,13 +6,28 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
+import {BidiModule} from '@angular/cdk/bidi';
 import {PlatformModule} from '@angular/cdk/platform';
 import {NgModule} from '@angular/core';
+import {CdkFixedSizeVirtualScroll} from './fixed-size-virtual-scroll';
 import {CdkScrollable} from './scrollable';
+import {CdkVirtualForOf} from './virtual-for-of';
+import {CdkVirtualScrollViewport} from './virtual-scroll-viewport';
 
 @NgModule({
-  imports: [PlatformModule],
-  exports: [CdkScrollable],
-  declarations: [CdkScrollable],
+  imports: [BidiModule, PlatformModule],
+  exports: [
+    BidiModule,
+    CdkFixedSizeVirtualScroll,
+    CdkScrollable,
+    CdkVirtualForOf,
+    CdkVirtualScrollViewport,
+  ],
+  declarations: [
+    CdkFixedSizeVirtualScroll,
+    CdkScrollable,
+    CdkVirtualForOf,
+    CdkVirtualScrollViewport,
+  ],
 })
-export class ScrollDispatchModule {}
+export class ScrollingModule {}

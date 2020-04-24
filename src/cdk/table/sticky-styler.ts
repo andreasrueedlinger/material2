@@ -26,16 +26,18 @@ export const STICKY_DIRECTIONS: StickyDirection[] = ['top', 'bottom', 'left', 'r
  */
 export class StickyStyler {
   /**
-   * @param isNativeHtmlTable Whether the sticky logic should be based on a table
+   * @param _isNativeHtmlTable Whether the sticky logic should be based on a table
    *     that uses the native `<table>` element.
-   * @param stickCellCss The CSS class that will be applied to every row/cell that has
+   * @param _stickCellCss The CSS class that will be applied to every row/cell that has
    *     sticky positioning applied.
    * @param direction The directionality context of the table (ltr/rtl); affects column positioning
    *     by reversing left/right positions.
+   * @param _isBrowser Whether the table is currently being rendered on the server or the client.
    */
-  constructor(private isNativeHtmlTable: boolean,
-              private stickCellCss: string,
-              public direction: Direction) { }
+  constructor(private _isNativeHtmlTable: boolean,
+              private _stickCellCss: string,
+              public direction: Direction,
+              private _isBrowser = true) { }
 
   /**
    * Clears the sticky positioning styles from the row and its cells by resetting the `position`
@@ -45,7 +47,14 @@ export class StickyStyler {
    */
   clearStickyPositioning(rows: HTMLElement[], stickyDirections: StickyDirection[]) {
     for (const row of rows) {
+      // If the row isn't an element (e.g. if it's an `ng-container`),
+      // it won't have inline styles or `children` so we skip it.
+      if (row.nodeType !== row.ELEMENT_NODE) {
+        continue;
+      }
+
       this._removeStickyStyle(row, stickyDirections);
+
       for (let i = 0; i < row.children.length; i++) {
         const cell = row.children[i] as HTMLElement;
         this._removeStickyStyle(cell, stickyDirections);
@@ -66,7 +75,7 @@ export class StickyStyler {
       rows: HTMLElement[], stickyStartStates: boolean[], stickyEndStates: boolean[]) {
     const hasStickyColumns =
         stickyStartStates.some(state => state) || stickyEndStates.some(state => state);
-    if (!rows.length || !hasStickyColumns) {
+    if (!rows.length || !hasStickyColumns || !this._isBrowser) {
       return;
     }
 
@@ -104,6 +113,11 @@ export class StickyStyler {
    *
    */
   stickRows(rowsToStick: HTMLElement[], stickyStates: boolean[], position: 'top' | 'bottom') {
+    // Since we can't measure the rows on the server, we can't stick the rows properly.
+    if (!this._isBrowser) {
+      return;
+    }
+
     // If positioning the rows to the bottom, reverse their order when evaluating the sticky
     // position such that the last row stuck will be "bottom: 0px" and so on.
     const rows = position === 'bottom' ? rowsToStick.reverse() : rowsToStick;
@@ -115,7 +129,7 @@ export class StickyStyler {
       }
 
       const row = rows[rowIndex];
-      if (this.isNativeHtmlTable) {
+      if (this._isNativeHtmlTable) {
         for (let j = 0; j < row.children.length; j++) {
           const cell = row.children[j] as HTMLElement;
           this._addStickyStyle(cell, position, stickyHeight);
@@ -126,6 +140,10 @@ export class StickyStyler {
         this._addStickyStyle(row, position, stickyHeight);
       }
 
+      if (rowIndex === rows.length - 1) {
+        // prevent unnecessary reflow from getBoundingClientRect()
+        return;
+      }
       stickyHeight += row.getBoundingClientRect().height;
     }
   }
@@ -137,7 +155,7 @@ export class StickyStyler {
    * the tfoot element.
    */
   updateStickyFooterContainer(tableElement: Element, stickyStates: boolean[]) {
-    if (!this.isNativeHtmlTable) {
+    if (!this._isNativeHtmlTable) {
       return;
     }
 
@@ -165,7 +183,7 @@ export class StickyStyler {
     const hasDirection = STICKY_DIRECTIONS.some(dir => !!element.style[dir]);
     if (!hasDirection) {
       element.style.position = '';
-      element.classList.remove(this.stickCellCss);
+      element.classList.remove(this._stickCellCss);
     }
   }
 
@@ -175,7 +193,7 @@ export class StickyStyler {
    * direction and value.
    */
   _addStickyStyle(element: HTMLElement, dir: StickyDirection, dirValue: number) {
-    element.classList.add(this.stickCellCss);
+    element.classList.add(this._stickCellCss);
     element.style[dir] = `${dirValue}px`;
     element.style.cssText += 'position: -webkit-sticky; position: sticky; ';
     element.style.zIndex = this._getCalculatedZIndex(element);
@@ -201,7 +219,10 @@ export class StickyStyler {
     };
 
     let zIndex = 0;
-    for (const dir of STICKY_DIRECTIONS) {
+    // Use `Iterable` instead of `Array` because TypeScript, as of 3.6.3,
+    // loses the array generic type in the `for of`. But we *also* have to use `Array` because
+    // typescript won't iterate over an `Iterable` unless you compile with `--downlevelIteration`
+    for (const dir of STICKY_DIRECTIONS as Iterable<StickyDirection> & Array<StickyDirection>) {
       if (element.style[dir]) {
         zIndex += zIndexIncrements[dir];
       }

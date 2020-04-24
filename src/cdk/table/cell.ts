@@ -6,9 +6,19 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {ContentChild, Directive, ElementRef, Input, TemplateRef} from '@angular/core';
-import {coerceBooleanProperty} from '@angular/cdk/coercion';
-import {CanStick, mixinHasStickyInput} from './can-stick';
+import {BooleanInput, coerceBooleanProperty} from '@angular/cdk/coercion';
+import {
+  ContentChild,
+  Directive,
+  ElementRef,
+  Input,
+  TemplateRef,
+  Inject,
+  Optional,
+} from '@angular/core';
+import {CanStick, CanStickCtor, mixinHasStickyInput} from './can-stick';
+import {CDK_TABLE} from './tokens';
+
 
 /** Base interface for a cell definition. Captures a column's cell template definition. */
 export interface CellDef {
@@ -21,7 +31,7 @@ export interface CellDef {
  */
 @Directive({selector: '[cdkCellDef]'})
 export class CdkCellDef implements CellDef {
-  constructor(/** @docs-private */ public template: TemplateRef<any>) { }
+  constructor(/** @docs-private */ public template: TemplateRef<any>) {}
 }
 
 /**
@@ -30,7 +40,7 @@ export class CdkCellDef implements CellDef {
  */
 @Directive({selector: '[cdkHeaderCellDef]'})
 export class CdkHeaderCellDef implements CellDef {
-  constructor(/** @docs-private */ public template: TemplateRef<any>) { }
+  constructor(/** @docs-private */ public template: TemplateRef<any>) {}
 }
 
 /**
@@ -39,13 +49,14 @@ export class CdkHeaderCellDef implements CellDef {
  */
 @Directive({selector: '[cdkFooterCellDef]'})
 export class CdkFooterCellDef implements CellDef {
-  constructor(/** @docs-private */ public template: TemplateRef<any>) { }
+  constructor(/** @docs-private */ public template: TemplateRef<any>) {}
 }
 
 // Boilerplate for applying mixins to CdkColumnDef.
 /** @docs-private */
-export class CdkColumnDefBase {}
-export const _CdkColumnDefBase = mixinHasStickyInput(CdkColumnDefBase);
+class CdkColumnDefBase {}
+const _CdkColumnDefBase: CanStickCtor&typeof CdkColumnDefBase =
+    mixinHasStickyInput(CdkColumnDefBase);
 
 /**
  * Column definition for the CDK table.
@@ -53,19 +64,22 @@ export const _CdkColumnDefBase = mixinHasStickyInput(CdkColumnDefBase);
  */
 @Directive({
   selector: '[cdkColumnDef]',
-  inputs: ['sticky']
+  inputs: ['sticky'],
+  providers: [{provide: 'MAT_SORT_HEADER_COLUMN_DEF', useExisting: CdkColumnDef}],
 })
 export class CdkColumnDef extends _CdkColumnDefBase implements CanStick {
   /** Unique name for this column. */
   @Input('cdkColumnDef')
-  get name(): string { return this._name; }
+  get name(): string {
+    return this._name;
+  }
   set name(name: string) {
     // If the directive is set without a name (updated programatically), then this setter will
     // trigger with an empty string and should not overwrite the programatically set value.
-    if (!name) { return; }
-
-    this._name = name;
-    this.cssClassFriendlyName = name.replace(/[^a-z0-9_-]/ig, '-');
+    if (name) {
+      this._name = name;
+      this.cssClassFriendlyName = name.replace(/[^a-z0-9_-]/ig, '-');
+    }
   }
   _name: string;
 
@@ -75,7 +89,9 @@ export class CdkColumnDef extends _CdkColumnDefBase implements CanStick {
    * has been changed.
    */
   @Input('stickyEnd')
-  get stickyEnd(): boolean { return this._stickyEnd; }
+  get stickyEnd(): boolean {
+    return this._stickyEnd;
+  }
   set stickyEnd(v: boolean) {
     const prevValue = this._stickyEnd;
     this._stickyEnd = coerceBooleanProperty(v);
@@ -98,6 +114,13 @@ export class CdkColumnDef extends _CdkColumnDefBase implements CanStick {
    * do not match are replaced by the '-' character.
    */
   cssClassFriendlyName: string;
+
+  constructor(@Inject(CDK_TABLE) @Optional() public _table?: any) {
+    super();
+  }
+
+  static ngAcceptInputType_sticky: BooleanInput;
+  static ngAcceptInputType_stickyEnd: BooleanInput;
 }
 
 /** Base class for the cells. Adds a CSS classname that identifies the column it renders in. */

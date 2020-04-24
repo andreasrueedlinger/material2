@@ -1,0 +1,18 @@
+load("//tools:defaults.bzl", "ts_library")
+
+package(default_visibility = ["//visibility:public"])
+
+ts_library(
+    name = "update-tool",
+    srcs = glob(["**/*.ts"]),
+    module_name = "@angular/cdk/schematics/update-tool",
+    tsconfig = ":tsconfig.json",
+    deps = [
+        "@npm//@angular-devkit/core",
+        "@npm//@angular-devkit/schematics",
+        "@npm//@schematics/angular",
+        "@npm//@types/glob",
+        "@npm//@types/node",
+        "@npm//typescript",
+    ],
+)
