@@ -18,6 +18,7 @@ import {
   Optional,
   Inject,
   Input,
+  AfterViewInit,
 } from '@angular/core';
 import {
   CanColor,
@@ -70,6 +71,10 @@ const _MatButtonMixinBase: CanDisableRippleCtor & CanDisableCtor & CanColorCtor 
   host: {
     '[attr.disabled]': 'disabled || null',
     '[class._mat-animation-noopable]': '_animationMode === "NoopAnimations"',
+    // Add a class for disabled button styling instead of the using attribute
+    // selector or pseudo-selector.  This allows users to create focusabled
+    // disabled buttons without recreating the styles.
+    '[class.mat-button-disabled]': 'disabled',
     'class': 'mat-focus-indicator',
   },
   templateUrl: 'button.html',
@@ -79,7 +84,7 @@ const _MatButtonMixinBase: CanDisableRippleCtor & CanDisableCtor & CanColorCtor 
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MatButton extends _MatButtonMixinBase
-    implements OnDestroy, CanDisable, CanColor, CanDisableRipple, FocusableOption {
+    implements AfterViewInit, OnDestroy, CanDisable, CanColor, CanDisableRipple, FocusableOption {
 
   /** Whether the button is round. */
   readonly isRoundButton: boolean = this._hasHostAttributes('mat-fab', 'mat-mini-fab');
@@ -108,11 +113,13 @@ export class MatButton extends _MatButtonMixinBase
     // the class is applied to derived classes.
     elementRef.nativeElement.classList.add('mat-button-base');
 
-    this._focusMonitor.monitor(this._elementRef, true);
-
     if (this.isRoundButton) {
       this.color = DEFAULT_ROUND_BUTTON_COLOR;
     }
+  }
+
+  ngAfterViewInit() {
+    this._focusMonitor.monitor(this._elementRef, true);
   }
 
   ngOnDestroy() {
@@ -120,8 +127,12 @@ export class MatButton extends _MatButtonMixinBase
   }
 
   /** Focuses the button. */
-  focus(origin: FocusOrigin = 'program', options?: FocusOptions): void {
-    this._focusMonitor.focusVia(this._getHostElement(), origin, options);
+  focus(origin?: FocusOrigin, options?: FocusOptions): void {
+    if (origin) {
+      this._focusMonitor.focusVia(this._getHostElement(), origin, options);
+    } else {
+      this._getHostElement().focus(options);
+    }
   }
 
   _getHostElement() {
@@ -157,6 +168,7 @@ export class MatButton extends _MatButtonMixinBase
     '[attr.aria-disabled]': 'disabled.toString()',
     '(click)': '_haltDisabledEvents($event)',
     '[class._mat-animation-noopable]': '_animationMode === "NoopAnimations"',
+    '[class.mat-button-disabled]': 'disabled',
     'class': 'mat-focus-indicator',
   },
   inputs: ['disabled', 'disableRipple', 'color'],

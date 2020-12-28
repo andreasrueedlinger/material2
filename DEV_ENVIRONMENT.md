@@ -3,7 +3,7 @@
 1. Make sure you have both `node` and `yarn` installed.
    We recommend using `nvm` to manage your node versions.
 2. angular/components uses Bazel which requires certain Bash and UNIX tools.
-   - On Windows: Follow the [instructions](https://docs.bazel.build/versions/master/install-windows.html#5-optional-install-compilers-and-language-runtimes)
+   - On Windows: Follow the [instructions](https://docs.bazel.build/versions/master/install-windows.html#installing-compilers-and-language-runtimes)
    to install [`MSYS2`](https://www.msys2.org/) and the listed "Common MSYS2 packages".
    Afterwards add `C:\msys64\usr\bin` to the `PATH` environment variable.
 3. Fork the `angular/components` repo on GitHub.
@@ -58,3 +58,9 @@ packages locally and test them by either of the following ways:
 1. Update the dependencies in `package.json` to point to the local uncompressed package directories.
 2. Directly copy the local uncompressed package directories into the `node_modules/` directory
    of a project.
+
+
+### Approving public API changes
+If you're making changes to a public API, they need to be propagated to our public API golden files.
+To save the changes you can run `yarn approve-api <target>` and to review the changes, you can look
+at the file under `tools/public_api_guard/<target>.d.ts`.

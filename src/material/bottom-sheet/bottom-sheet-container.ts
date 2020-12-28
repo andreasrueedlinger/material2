@@ -45,7 +45,11 @@ import {FocusTrap, FocusTrapFactory} from '@angular/cdk/a11y';
   selector: 'mat-bottom-sheet-container',
   templateUrl: 'bottom-sheet-container.html',
   styleUrls: ['bottom-sheet-container.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  // In Ivy embedded views will be change detected from their declaration place, rather than where
+  // they were stamped out. This means that we can't have the bottom sheet container be OnPush,
+  // because it might cause the sheets that were opened from a template not to be out of date.
+  // tslint:disable-next-line:validate-decorators
+  changeDetection: ChangeDetectionStrategy.Default,
   encapsulation: ViewEncapsulation.None,
   animations: [matBottomSheetAnimations.bottomSheetState],
   host: {
@@ -175,7 +179,7 @@ export class MatBottomSheetContainer extends BasePortalOutlet implements OnDestr
   }
 
   private _validatePortalAttached() {
-    if (this._portalOutlet.hasAttached()) {
+    if (this._portalOutlet.hasAttached() && (typeof ngDevMode === 'undefined' || ngDevMode)) {
       throw Error('Attempting to attach bottom sheet content after content is already attached');
     }
   }

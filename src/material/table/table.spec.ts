@@ -1,7 +1,7 @@
 import {DataSource} from '@angular/cdk/collections';
 import {Component, OnInit, ViewChild, AfterViewInit} from '@angular/core';
 import {
-  async,
+  waitForAsync,
   ComponentFixture,
   fakeAsync,
   flushMicrotasks,
@@ -18,7 +18,7 @@ import {MatTableDataSource} from './table-data-source';
 
 
 describe('MatTable', () => {
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [MatTableModule, MatPaginatorModule, MatSortModule, NoopAnimationsModule],
       declarations: [
@@ -104,6 +104,15 @@ describe('MatTable', () => {
       expect(table.textContent.trim()).not.toContain('No data');
     });
 
+    it('should show the no data row if there is no data on init', () => {
+      const fixture = TestBed.createComponent(MatTableApp);
+      fixture.componentInstance.dataSource!.data = [];
+      fixture.detectChanges();
+
+      const table = fixture.nativeElement.querySelector('.mat-table')!;
+      expect(table.textContent.trim()).toContain('No data');
+    });
+
   });
 
   it('should be able to render a table correctly with native elements', () => {
@@ -186,13 +195,14 @@ describe('MatTable', () => {
     ]);
   });
 
-  it('should apply custom sticky CSS class to sticky cells', () => {
+  it('should apply custom sticky CSS class to sticky cells', fakeAsync(() => {
     let fixture = TestBed.createComponent(StickyTableApp);
     fixture.detectChanges();
+    flushMicrotasks();
 
     const stuckCellElement = fixture.nativeElement.querySelector('.mat-table th')!;
     expect(stuckCellElement.classList).toContain('mat-table-sticky');
-  });
+  }));
 
   // Note: needs to be fakeAsync so it catches the error.
   it('should not throw when a row definition is on an ng-container', fakeAsync(() => {
@@ -341,6 +351,14 @@ describe('MatTable', () => {
       expectTableToMatchContent(tableElement, [
         ['Column A', 'Column B', 'Column C'],
         ['a_2', 'b_2', 'c_2'],
+        ['Footer A', 'Footer B', 'Footer C'],
+      ]);
+
+      // Change the filter to a falsy value that might come in from the view.
+      dataSource.filter = 0 as any;
+      fixture.detectChanges();
+      expectTableToMatchContent(tableElement, [
+        ['Column A', 'Column B', 'Column C'],
         ['Footer A', 'Footer B', 'Footer C'],
       ]);
     }));
@@ -625,7 +643,7 @@ class MatTableApp {
   columnsToRender = ['column_a', 'column_b', 'column_c'];
   isFourthRow = (i: number, _rowData: TestData) => i == 3;
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
+  @ViewChild(MatTable) table: MatTable<TestData>;
 }
 
 @Component({
@@ -658,7 +676,7 @@ class NativeHtmlTableApp {
   dataSource: FakeDataSource | null = new FakeDataSource();
   columnsToRender = ['column_a', 'column_b', 'column_c'];
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
+  @ViewChild(MatTable) table: MatTable<TestData>;
 }
 
 @Component({
@@ -726,7 +744,7 @@ class StickyTableApp {
   dataSource = new FakeDataSource();
   columnsToRender = ['column_a'];
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
+  @ViewChild(MatTable) table: MatTable<TestData>;
 }
 
 
@@ -793,9 +811,9 @@ class ArrayDataSourceMatTableApp implements AfterViewInit {
   dataSource = new MatTableDataSource<TestData>();
   columnsToRender = ['column_a', 'column_b', 'column_c'];
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
-  @ViewChild(MatPaginator, {static: true}) paginator: MatPaginator;
-  @ViewChild(MatSort, {static: true}) sort: MatSort;
+  @ViewChild(MatTable) table: MatTable<TestData>;
+  @ViewChild(MatPaginator) paginator: MatPaginator;
+  @ViewChild(MatSort) sort: MatSort;
   @ViewChild(MatSortHeader) sortHeader: MatSortHeader;
 
   constructor() {
@@ -846,8 +864,8 @@ class MatTableWithSortApp implements OnInit {
   dataSource = new MatTableDataSource<TestData>();
   columnsToRender = ['column_a', 'column_b', 'column_c'];
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
-  @ViewChild(MatSort, {static: true}) sort: MatSort;
+  @ViewChild(MatTable) table: MatTable<TestData>;
+  @ViewChild(MatSort) sort: MatSort;
 
   constructor() {
     this.underlyingDataSource.data = [];
@@ -897,8 +915,8 @@ class MatTableWithPaginatorApp implements OnInit {
   dataSource = new MatTableDataSource<TestData>();
   columnsToRender = ['column_a', 'column_b', 'column_c'];
 
-  @ViewChild(MatTable, {static: true}) table: MatTable<TestData>;
-  @ViewChild(MatPaginator, {static: true}) paginator: MatPaginator;
+  @ViewChild(MatTable) table: MatTable<TestData>;
+  @ViewChild(MatPaginator) paginator: MatPaginator;
 
   constructor() {
     this.underlyingDataSource.data = [];

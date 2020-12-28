@@ -30,6 +30,7 @@ import {
   ViewEncapsulation,
   InjectionToken,
   Inject,
+  AfterViewInit,
 } from '@angular/core';
 import {ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
 import {
@@ -39,7 +40,10 @@ import {
 } from '@angular/material/core';
 
 
-/** Acceptable types for a button toggle. */
+/**
+ * @deprecated No longer used.
+ * @breaking-change 11.0.0
+ */
 export type ToggleType = 'checkbox' | 'radio';
 
 /** Possible appearance styles for the button toggle. */
@@ -60,7 +64,13 @@ export interface MatButtonToggleDefaultOptions {
 export const MAT_BUTTON_TOGGLE_DEFAULT_OPTIONS =
     new InjectionToken<MatButtonToggleDefaultOptions>('MAT_BUTTON_TOGGLE_DEFAULT_OPTIONS');
 
-
+/**
+ * Injection token that can be used to reference instances of `MatButtonToggleGroup`.
+ * It serves as alternative token to the actual `MatButtonToggleGroup` class which
+ * could cause unnecessary retention of the class and its component metadata.
+ */
+export const MAT_BUTTON_TOGGLE_GROUP =
+    new InjectionToken<MatButtonToggleGroup>('MatButtonToggleGroup');
 
 /**
  * Provider Expression that allows mat-button-toggle-group to register as a ControlValueAccessor.
@@ -72,12 +82,6 @@ export const MAT_BUTTON_TOGGLE_GROUP_VALUE_ACCESSOR: any = {
   useExisting: forwardRef(() => MatButtonToggleGroup),
   multi: true
 };
-
-/**
- * @deprecated Use `MatButtonToggleGroup` instead.
- * @breaking-change 8.0.0
- */
-export class MatButtonToggleGroupMultiple {}
 
 let _uniqueIdCounter = 0;
 
@@ -96,7 +100,7 @@ export class MatButtonToggleChange {
   selector: 'mat-button-toggle-group',
   providers: [
     MAT_BUTTON_TOGGLE_GROUP_VALUE_ACCESSOR,
-    {provide: MatButtonToggleGroupMultiple, useExisting: MatButtonToggleGroup},
+    {provide: MAT_BUTTON_TOGGLE_GROUP, useExisting: MatButtonToggleGroup},
   ],
   host: {
     'role': 'group',
@@ -327,7 +331,7 @@ export class MatButtonToggleGroup implements ControlValueAccessor, OnInit, After
     }
 
     if (this.multiple && value) {
-      if (!Array.isArray(value)) {
+      if (!Array.isArray(value) && (typeof ngDevMode === 'undefined' || ngDevMode)) {
         throw Error('Value must be an array in multiple-selection mode.');
       }
 
@@ -395,15 +399,15 @@ const _MatButtonToggleMixinBase: CanDisableRippleCtor & typeof MatButtonToggleBa
     '[class.mat-button-toggle-disabled]': 'disabled',
     '[class.mat-button-toggle-appearance-standard]': 'appearance === "standard"',
     'class': 'mat-button-toggle',
-    // Always reset the tabindex to -1 so it doesn't conflict with the one on the `button`,
-    // but can still receive focus from things like cdkFocusInitial.
-    '[attr.tabindex]': '-1',
+    '[attr.aria-label]': 'null',
+    '[attr.aria-labelledby]': 'null',
     '[attr.id]': 'id',
     '[attr.name]': 'null',
     '(focus)': 'focus()',
+    'role': 'presentation',
   }
 })
-export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit,
+export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit, AfterViewInit,
   CanDisableRipple, OnDestroy {
 
   private _isSingleSelector = false;
@@ -419,9 +423,6 @@ export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit
    * Users can specify the `aria-labelledby` attribute which will be forwarded to the input element
    */
   @Input('aria-labelledby') ariaLabelledby: string | null = null;
-
-  /** Type of the button toggle. Either 'radio' or 'checkbox'. */
-  _type: ToggleType;
 
   @ViewChild('button') _buttonElement: ElementRef<HTMLButtonElement>;
 
@@ -484,11 +485,10 @@ export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit
   @Output() readonly change: EventEmitter<MatButtonToggleChange> =
       new EventEmitter<MatButtonToggleChange>();
 
-  constructor(@Optional() toggleGroup: MatButtonToggleGroup,
+  constructor(@Optional() @Inject(MAT_BUTTON_TOGGLE_GROUP) toggleGroup: MatButtonToggleGroup,
               private _changeDetectorRef: ChangeDetectorRef,
               private _elementRef: ElementRef<HTMLElement>,
               private _focusMonitor: FocusMonitor,
-              // @breaking-change 8.0.0 `defaultTabIndex` to be made a required parameter.
               @Attribute('tabindex') defaultTabIndex: string,
               @Optional() @Inject(MAT_BUTTON_TOGGLE_DEFAULT_OPTIONS)
                   defaultOptions?: MatButtonToggleDefaultOptions) {
@@ -504,7 +504,6 @@ export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit
   ngOnInit() {
     const group = this.buttonToggleGroup;
     this._isSingleSelector = group && !group.multiple;
-    this._type = this._isSingleSelector ? 'radio' : 'checkbox';
     this.id = this.id || `mat-button-toggle-${_uniqueIdCounter++}`;
 
     if (this._isSingleSelector) {
@@ -522,7 +521,9 @@ export class MatButtonToggle extends _MatButtonToggleMixinBase implements OnInit
         group._syncButtonToggle(this, this._checked);
       }
     }
+  }
 
+  ngAfterViewInit() {
     this._focusMonitor.monitor(this._elementRef, true);
   }
 

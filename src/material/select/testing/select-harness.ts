@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://angular.io/license
  */
 
-import {HarnessPredicate} from '@angular/cdk/testing';
+import {HarnessPredicate, parallel} from '@angular/cdk/testing';
 import {MatFormFieldControlHarness} from '@angular/material/form-field/testing/control';
 import {
   MatOptionHarness,
@@ -58,8 +58,7 @@ export class MatSelectHarness extends MatFormFieldControlHarness {
 
   /** Gets a boolean promise indicating if the select is in multi-selection mode. */
   async isMultiple(): Promise<boolean> {
-    const ariaMultiselectable = (await this.host()).getAttribute('aria-multiselectable');
-    return (await ariaMultiselectable) === 'true';
+    return (await this.host()).hasClass('mat-select-multiple');
   }
 
   /** Gets a promise for the select's value text. */
@@ -75,6 +74,11 @@ export class MatSelectHarness extends MatFormFieldControlHarness {
   /** Blurs the select and returns a void promise that indicates when the action is complete. */
   async blur(): Promise<void> {
     return (await this.host()).blur();
+  }
+
+  /** Whether the select is focused. */
+  async isFocused(): Promise<boolean> {
+    return (await this.host()).isFocused();
   }
 
   /** Gets the options inside the select panel. */
@@ -114,14 +118,16 @@ export class MatSelectHarness extends MatFormFieldControlHarness {
   async clickOptions(filter: OptionHarnessFilters = {}): Promise<void> {
     await this.open();
 
-    const [isMultiple, options] = await Promise.all([this.isMultiple(), this.getOptions(filter)]);
+    const [isMultiple, options] = await parallel(() => {
+      return [this.isMultiple(), this.getOptions(filter)];
+    });
 
     if (options.length === 0) {
       throw Error('Select does not have options matching the specified filter');
     }
 
     if (isMultiple) {
-      await Promise.all(options.map(option => option.click()));
+      await parallel(() => options.map(option => option.click()));
     } else {
       await options[0].click();
     }

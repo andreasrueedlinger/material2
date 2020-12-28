@@ -56,6 +56,7 @@ export class GoogleMapDemo {
   isPolylineDisplayed = false;
   polylineOptions:
       google.maps.PolylineOptions = {path: POLYLINE_PATH, strokeColor: 'grey', strokeOpacity: 0.8};
+
   isPolygonDisplayed = false;
   polygonOptions:
       google.maps.PolygonOptions = {paths: POLYGON_PATH, strokeColor: 'grey', strokeOpacity: 0.8};
@@ -65,9 +66,26 @@ export class GoogleMapDemo {
   isCircleDisplayed = false;
   circleOptions: google.maps.CircleOptions =
       {center: CIRCLE_CENTER, radius: CIRCLE_RADIUS, strokeColor: 'grey', strokeOpacity: 0.8};
+
   isGroundOverlayDisplayed = false;
-  groundOverlayUrl = 'https://angular.io/assets/images/logos/angular/angular.svg';
+  groundOverlayImages = [
+    {
+      title: 'Red logo',
+      url: 'https://angular.io/assets/images/logos/angular/angular.svg'
+    },
+    {
+      title: 'Black logo',
+      url: 'https://angular.io/assets/images/logos/angular/angular_solidBlack.svg'
+    }
+  ];
+  groundOverlayUrl = this.groundOverlayImages[0].url;
   groundOverlayBounds = RECTANGLE_BOUNDS;
+  isKmlLayerDisplayed = false;
+  demoKml =
+      'https://developers.google.com/maps/documentation/javascript/examples/kml/westcampus.kml';
+  isTrafficLayerDisplayed = false;
+  isTransitLayerDisplayed = false;
+  isBicyclingLayerDisplayed = false;
 
   mapTypeId: google.maps.MapTypeId;
   mapTypeIds = [
@@ -76,6 +94,9 @@ export class GoogleMapDemo {
     google.maps.MapTypeId.SATELLITE,
     google.maps.MapTypeId.TERRAIN
   ];
+
+  markerClustererImagePath =
+      'https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/m';
 
   handleClick(event: google.maps.MouseEvent) {
     this.markerPositions.push(event.latLng.toJSON());
@@ -148,5 +169,25 @@ export class GoogleMapDemo {
 
   toggleGroundOverlayDisplay() {
     this.isGroundOverlayDisplayed = !this.isGroundOverlayDisplayed;
+  }
+
+  groundOverlayUrlChanged(event: Event) {
+    this.groundOverlayUrl = (event.target as HTMLSelectElement).value;
+  }
+
+  toggleKmlLayerDisplay() {
+    this.isKmlLayerDisplayed = !this.isKmlLayerDisplayed;
+  }
+
+  toggleTrafficLayerDisplay() {
+    this.isTrafficLayerDisplayed = !this.isTrafficLayerDisplayed;
+  }
+
+  toggleTransitLayerDisplay() {
+    this.isTransitLayerDisplayed = !this.isTransitLayerDisplayed;
+  }
+
+  toggleBicyclingLayerDisplay() {
+    this.isBicyclingLayerDisplayed = !this.isBicyclingLayerDisplayed;
   }
 }

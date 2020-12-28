@@ -30,6 +30,7 @@ import {MapEventManager} from '../map-event-manager';
  */
 @Directive({
   selector: 'map-polygon',
+  exportAs: 'mapPolygon',
 })
 export class MapPolygon implements OnInit, OnDestroy {
   private _eventManager = new MapEventManager(this._ngZone);
@@ -149,7 +150,7 @@ export class MapPolygon implements OnInit, OnDestroy {
           this.polygon = new google.maps.Polygon(options);
         });
         this._assertInitialized();
-        this.polygon!.setMap(this._map.googleMap!);
+        this.polygon.setMap(this._map.googleMap!);
         this._eventManager.setTarget(this.polygon);
       });
 
@@ -173,7 +174,7 @@ export class MapPolygon implements OnInit, OnDestroy {
    */
   getDraggable(): boolean {
     this._assertInitialized();
-    return this.polygon!.getDraggable();
+    return this.polygon.getDraggable();
   }
 
   /**
@@ -181,7 +182,7 @@ export class MapPolygon implements OnInit, OnDestroy {
    */
   getEditable(): boolean {
     this._assertInitialized();
-    return this.polygon!.getEditable();
+    return this.polygon.getEditable();
   }
 
   /**
@@ -189,7 +190,7 @@ export class MapPolygon implements OnInit, OnDestroy {
    */
   getPath(): google.maps.MVCArray<google.maps.LatLng> {
     this._assertInitialized();
-    return this.polygon!.getPath();
+    return this.polygon.getPath();
   }
 
   /**
@@ -197,7 +198,7 @@ export class MapPolygon implements OnInit, OnDestroy {
    */
   getPaths(): google.maps.MVCArray<google.maps.MVCArray<google.maps.LatLng>> {
     this._assertInitialized();
-    return this.polygon!.getPaths();
+    return this.polygon.getPaths();
   }
 
   /**
@@ -205,7 +206,7 @@ export class MapPolygon implements OnInit, OnDestroy {
    */
   getVisible(): boolean {
     this._assertInitialized();
-    return this.polygon!.getVisible();
+    return this.polygon.getVisible();
   }
 
   private _combineOptions(): Observable<google.maps.PolygonOptions> {
@@ -221,7 +222,7 @@ export class MapPolygon implements OnInit, OnDestroy {
   private _watchForOptionsChanges() {
     this._options.pipe(takeUntil(this._destroyed)).subscribe(options => {
       this._assertInitialized();
-      this.polygon!.setOptions(options);
+      this.polygon.setOptions(options);
     });
   }
 
@@ -229,21 +230,23 @@ export class MapPolygon implements OnInit, OnDestroy {
     this._paths.pipe(takeUntil(this._destroyed)).subscribe(paths => {
       if (paths) {
         this._assertInitialized();
-        this.polygon!.setPaths(paths);
+        this.polygon.setPaths(paths);
       }
     });
   }
 
-  private _assertInitialized() {
-    if (!this._map.googleMap) {
-      throw Error(
-          'Cannot access Google Map information before the API has been initialized. ' +
-          'Please wait for the API to load before trying to interact with it.');
-    }
-    if (!this.polygon) {
-      throw Error(
-          'Cannot interact with a Google Map Polygon before it has been ' +
-          'initialized. Please wait for the Polygon to load before trying to interact with it.');
+  private _assertInitialized(): asserts this is {polygon: google.maps.Polygon} {
+    if (typeof ngDevMode === 'undefined' || ngDevMode) {
+      if (!this._map.googleMap) {
+        throw Error(
+            'Cannot access Google Map information before the API has been initialized. ' +
+            'Please wait for the API to load before trying to interact with it.');
+      }
+      if (!this.polygon) {
+        throw Error(
+            'Cannot interact with a Google Map Polygon before it has been ' +
+            'initialized. Please wait for the Polygon to load before trying to interact with it.');
+      }
     }
   }
 }

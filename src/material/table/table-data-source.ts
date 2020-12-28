@@ -8,17 +8,17 @@
 
 import {_isNumberValue} from '@angular/cdk/coercion';
 import {DataSource} from '@angular/cdk/table';
+import {MatPaginator, PageEvent} from '@angular/material/paginator';
+import {MatSort, Sort} from '@angular/material/sort';
 import {
   BehaviorSubject,
   combineLatest,
   merge,
   Observable,
   of as observableOf,
-  Subscription,
   Subject,
+  Subscription,
 } from 'rxjs';
-import {MatPaginator, PageEvent} from '@angular/material/paginator';
-import {MatSort, Sort} from '@angular/material/sort';
 import {map} from 'rxjs/operators';
 
 /**
@@ -27,20 +27,16 @@ import {map} from 'rxjs/operators';
  */
 const MAX_SAFE_INTEGER = 9007199254740991;
 
-/**
- * Data source that accepts a client-side data array and includes native support of filtering,
- * sorting (using MatSort), and pagination (using MatPaginator).
- *
- * Allows for sort customization by overriding sortingDataAccessor, which defines how data
- * properties are accessed. Also allows for filter customization by overriding filterTermAccessor,
- * which defines how row data is converted to a string for filter matching.
- *
- * **Note:** This class is meant to be a simple data source to help you get started. As such
- * it isn't equipped to handle some more advanced cases like robust i18n support or server-side
- * interactions. If your app needs to support more advanced use cases, consider implementing your
- * own `DataSource`.
- */
-export class MatTableDataSource<T> extends DataSource<T> {
+interface Paginator {
+  page: Subject<PageEvent>;
+  pageIndex: number;
+  initialized: Observable<void>;
+  pageSize: number;
+  length: number;
+}
+
+/** Shared base class with MDC-based implementation. */
+export class _MatTableDataSource<T, P extends Paginator> extends DataSource<T> {
   /** Stream that emits when a new data array is set on the data source. */
   private readonly _data: BehaviorSubject<T[]>;
 
@@ -57,7 +53,7 @@ export class MatTableDataSource<T> extends DataSource<T> {
    * Subscription to the changes that should trigger an update to the table's rendered rows, such
    * as filtering, sorting, pagination, or base data changes.
    */
-  _renderChangesSubscription = Subscription.EMPTY;
+  _renderChangesSubscription: Subscription|null = null;
 
   /**
    * The filtered set of data that has been matched by the filter string, or all the data if there
@@ -99,12 +95,12 @@ export class MatTableDataSource<T> extends DataSource<T> {
    * e.g. `[pageLength]=100` or `[pageIndex]=1`, then be sure that the paginator's view has been
    * initialized before assigning it to this data source.
    */
-  get paginator(): MatPaginator | null { return this._paginator; }
-  set paginator(paginator: MatPaginator|null) {
+  get paginator(): P | null { return this._paginator; }
+  set paginator(paginator: P | null) {
     this._paginator = paginator;
     this._updateChangeSubscription();
   }
-  private _paginator: MatPaginator|null;
+  private _paginator: P | null;
 
   /**
    * Data accessor function that is used for accessing data properties for sorting through
@@ -147,6 +143,17 @@ export class MatTableDataSource<T> extends DataSource<T> {
     return data.sort((a, b) => {
       let valueA = this.sortingDataAccessor(a, active);
       let valueB = this.sortingDataAccessor(b, active);
+
+      // If there are data in the column that can be converted to a number,
+      // it must be ensured that the rest of the data
+      // is of the same type so as not to order incorrectly.
+      const valueAType = typeof valueA;
+      const valueBType = typeof valueB;
+
+      if (valueAType !== valueBType) {
+        if (valueAType === 'number') { valueA += ''; }
+        if (valueBType === 'number') { valueB += ''; }
+      }
 
       // If both valueA and valueB exist (truthy), then compare the two. Otherwise, check if
       // one value exists while the other doesn't. In this case, existing value should come last.
@@ -237,7 +244,7 @@ export class MatTableDataSource<T> extends DataSource<T> {
     const paginatedData = combineLatest([orderedData, pageChange])
       .pipe(map(([data]) => this._pageData(data)));
     // Watched for paged data changes and send the result to the table to render.
-    this._renderChangesSubscription.unsubscribe();
+    this._renderChangesSubscription?.unsubscribe();
     this._renderChangesSubscription = paginatedData.subscribe(data => this._renderData.next(data));
   }
 
@@ -250,8 +257,8 @@ export class MatTableDataSource<T> extends DataSource<T> {
     // If there is a filter string, filter out data that does not contain it.
     // Each data object is converted to a string using the function defined by filterTermAccessor.
     // May be overridden for customization.
-    this.filteredData =
-        !this.filter ? data : data.filter(obj => this.filterPredicate(obj, this.filter));
+    this.filteredData = (this.filter == null || this.filter === '') ? data :
+        data.filter(obj => this.filterPredicate(obj, this.filter));
 
     if (this.paginator) { this._updatePaginator(this.filteredData.length); }
 
@@ -314,11 +321,35 @@ export class MatTableDataSource<T> extends DataSource<T> {
    * Used by the MatTable. Called when it connects to the data source.
    * @docs-private
    */
-  connect() { return this._renderData; }
+  connect() {
+    if (!this._renderChangesSubscription) {
+      this._updateChangeSubscription();
+    }
+
+    return this._renderData;
+  }
 
   /**
-   * Used by the MatTable. Called when it is destroyed. No-op.
+   * Used by the MatTable. Called when it disconnects from the data source.
    * @docs-private
    */
-  disconnect() { }
+  disconnect() {
+    this._renderChangesSubscription?.unsubscribe();
+    this._renderChangesSubscription = null;
+  }
 }
+
+/**
+ * Data source that accepts a client-side data array and includes native support of filtering,
+ * sorting (using MatSort), and pagination (using MatPaginator).
+ *
+ * Allows for sort customization by overriding sortingDataAccessor, which defines how data
+ * properties are accessed. Also allows for filter customization by overriding filterTermAccessor,
+ * which defines how row data is converted to a string for filter matching.
+ *
+ * **Note:** This class is meant to be a simple data source to help you get started. As such
+ * it isn't equipped to handle some more advanced cases like robust i18n support or server-side
+ * interactions. If your app needs to support more advanced use cases, consider implementing your
+ * own `DataSource`.
+ */
+export class MatTableDataSource<T> extends _MatTableDataSource<T, MatPaginator> {}

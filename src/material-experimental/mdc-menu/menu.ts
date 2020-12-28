@@ -20,7 +20,7 @@ import {
   MAT_MENU_DEFAULT_OPTIONS,
   MAT_MENU_PANEL,
   MAT_MENU_SCROLL_STRATEGY,
-  MatMenu as BaseMatMenu,
+  _MatMenuBase,
   matMenuAnimations,
   MatMenuDefaultOptions,
 } from '@angular/material/menu';
@@ -44,17 +44,20 @@ export const MAT_MENU_SCROLL_STRATEGY_FACTORY_PROVIDER: Provider = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   exportAs: 'matMenu',
+  host: {
+    '[attr.aria-label]': 'null',
+    '[attr.aria-labelledby]': 'null',
+    '[attr.aria-describedby]': 'null',
+  },
   animations: [
     matMenuAnimations.transformMenu,
     matMenuAnimations.fadeInItems
   ],
   providers: [
     {provide: MAT_MENU_PANEL, useExisting: MatMenu},
-    {provide: BaseMatMenu, useExisting: MatMenu},
   ]
 })
-export class MatMenu extends BaseMatMenu {
-
+export class MatMenu extends _MatMenuBase {
   constructor(_elementRef: ElementRef<HTMLElement>,
               _ngZone: NgZone,
               @Inject(MAT_MENU_DEFAULT_OPTIONS) _defaultOptions: MatMenuDefaultOptions) {

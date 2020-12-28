@@ -7,12 +7,12 @@
  */
 
 import {coerceBooleanProperty, coerceNumberProperty} from '@angular/cdk/coercion';
-import {ComponentHarness, HarnessPredicate} from '@angular/cdk/testing';
+import {ComponentHarness, HarnessPredicate, parallel} from '@angular/cdk/testing';
 import {SliderHarnessFilters} from '@angular/material/slider/testing';
 
 /** Harness for interacting with a MDC mat-slider in tests. */
 export class MatSliderHarness extends ComponentHarness {
-  static hostSelector = 'mat-slider';
+  static hostSelector = '.mat-mdc-slider';
 
   /**
    * Gets a `HarnessPredicate` that can be used to search for a mat-slider with
@@ -95,7 +95,7 @@ export class MatSliderHarness extends ComponentHarness {
     await this.waitForTasksOutsideAngular();
 
     const [sliderEl, trackContainer] =
-        await Promise.all([this.host(), this._trackContainer()]);
+        await parallel(() => [this.host(), this._trackContainer()]);
     let percentage = await this._calculatePercentage(value);
     const {width} = await trackContainer.getDimensions();
 
@@ -126,9 +126,14 @@ export class MatSliderHarness extends ComponentHarness {
     return (await this.host()).blur();
   }
 
+  /** Whether the slider is focused. */
+  async isFocused(): Promise<boolean> {
+    return (await this.host()).isFocused();
+  }
+
   /** Calculates the percentage of the given value. */
   private async _calculatePercentage(value: number) {
-    const [min, max] = await Promise.all([this.getMinValue(), this.getMaxValue()]);
+    const [min, max] = await parallel(() => [this.getMinValue(), this.getMaxValue()]);
     return (value - min) / (max - min);
   }
 }

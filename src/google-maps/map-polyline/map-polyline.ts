@@ -30,6 +30,7 @@ import {MapEventManager} from '../map-event-manager';
  */
 @Directive({
   selector: 'map-polyline',
+  exportAs: 'mapPolyline',
 })
 export class MapPolyline implements OnInit, OnDestroy {
   private _eventManager = new MapEventManager(this._ngZone);
@@ -147,7 +148,7 @@ export class MapPolyline implements OnInit, OnDestroy {
         // user has subscribed to.
         this._ngZone.runOutsideAngular(() => this.polyline = new google.maps.Polyline(options));
         this._assertInitialized();
-        this.polyline!.setMap(this._map.googleMap!);
+        this.polyline.setMap(this._map.googleMap!);
         this._eventManager.setTarget(this.polyline);
       });
 
@@ -171,7 +172,7 @@ export class MapPolyline implements OnInit, OnDestroy {
    */
   getDraggable(): boolean {
     this._assertInitialized();
-    return this.polyline!.getDraggable();
+    return this.polyline.getDraggable();
   }
 
   /**
@@ -179,7 +180,7 @@ export class MapPolyline implements OnInit, OnDestroy {
    */
   getEditable(): boolean {
     this._assertInitialized();
-    return this.polyline!.getEditable();
+    return this.polyline.getEditable();
   }
 
   /**
@@ -187,8 +188,7 @@ export class MapPolyline implements OnInit, OnDestroy {
    */
   getPath(): google.maps.MVCArray<google.maps.LatLng> {
     this._assertInitialized();
-    // @breaking-change 11.0.0 Make the return value nullable.
-    return this.polyline!.getPath();
+    return this.polyline.getPath();
   }
 
   /**
@@ -196,7 +196,7 @@ export class MapPolyline implements OnInit, OnDestroy {
    */
   getVisible(): boolean {
     this._assertInitialized();
-    return this.polyline!.getVisible();
+    return this.polyline.getVisible();
   }
 
   private _combineOptions(): Observable<google.maps.PolylineOptions> {
@@ -211,32 +211,32 @@ export class MapPolyline implements OnInit, OnDestroy {
 
   private _watchForOptionsChanges() {
     this._options.pipe(takeUntil(this._destroyed)).subscribe(options => {
-      if (this.polyline) {
-        this._assertInitialized();
-        this.polyline.setOptions(options);
-      }
+      this._assertInitialized();
+      this.polyline.setOptions(options);
     });
   }
 
   private _watchForPathChanges() {
     this._path.pipe(takeUntil(this._destroyed)).subscribe(path => {
-      if (path && this.polyline) {
+      if (path) {
         this._assertInitialized();
         this.polyline.setPath(path);
       }
     });
   }
 
-  private _assertInitialized() {
-    if (!this._map.googleMap) {
-      throw Error(
-          'Cannot access Google Map information before the API has been initialized. ' +
-          'Please wait for the API to load before trying to interact with it.');
-    }
-    if (!this.polyline) {
-      throw Error(
-          'Cannot interact with a Google Map Polyline before it has been ' +
-          'initialized. Please wait for the Polyline to load before trying to interact with it.');
+  private _assertInitialized(): asserts this is {polyline: google.maps.Polyline} {
+    if (typeof ngDevMode === 'undefined' || ngDevMode) {
+      if (!this._map.googleMap) {
+        throw Error(
+            'Cannot access Google Map information before the API has been initialized. ' +
+            'Please wait for the API to load before trying to interact with it.');
+      }
+      if (!this.polyline) {
+        throw Error(
+            'Cannot interact with a Google Map Polyline before it has been ' +
+            'initialized. Please wait for the Polyline to load before trying to interact with it.');
+      }
     }
   }
 }

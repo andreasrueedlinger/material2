@@ -18,9 +18,11 @@ import {
   ViewEncapsulation,
   Inject,
   ElementRef,
+  AfterViewInit,
 } from '@angular/core';
 import {CanDisable, CanDisableCtor, mixinDisabled} from '@angular/material/core';
 import {FocusMonitor} from '@angular/cdk/a11y';
+import {ENTER, SPACE} from '@angular/cdk/keycodes';
 import {merge, Subscription} from 'rxjs';
 import {MatSort, MatSortable} from './sort';
 import {matSortAnimations} from './sort-animations';
@@ -77,6 +79,7 @@ interface MatSortHeaderColumnDef {
   host: {
     'class': 'mat-sort-header',
     '(click)': '_handleClick()',
+    '(keydown)': '_handleKeydown($event)',
     '(mouseenter)': '_setIndicatorHintVisible(true)',
     '(mouseleave)': '_setIndicatorHintVisible(false)',
     '[attr.aria-sort]': '_getAriaSortAttribute()',
@@ -95,7 +98,7 @@ interface MatSortHeaderColumnDef {
   ]
 })
 export class MatSortHeader extends _MatSortHeaderMixinBase
-    implements CanDisable, MatSortable, OnDestroy, OnInit {
+    implements CanDisable, MatSortable, OnDestroy, OnInit, AfterViewInit {
   private _rerenderSubscription: Subscription;
 
   /**
@@ -138,23 +141,21 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
   private _disableClear: boolean;
 
   constructor(public _intl: MatSortHeaderIntl,
-              changeDetectorRef: ChangeDetectorRef,
+              private _changeDetectorRef: ChangeDetectorRef,
+              // `MatSort` is not optionally injected, but just asserted manually w/ better error.
+              // tslint:disable-next-line: lightweight-tokens
               @Optional() public _sort: MatSort,
               @Inject('MAT_SORT_HEADER_COLUMN_DEF') @Optional()
                   public _columnDef: MatSortHeaderColumnDef,
-              /**
-               * @deprecated _focusMonitor and _elementRef to become required parameters.
-               * @breaking-change 10.0.0
-               */
-              private _focusMonitor?: FocusMonitor,
-              private _elementRef?: ElementRef<HTMLElement>) {
+              private _focusMonitor: FocusMonitor,
+              private _elementRef: ElementRef<HTMLElement>) {
     // Note that we use a string token for the `_columnDef`, because the value is provided both by
     // `material/table` and `cdk/table` and we can't have the CDK depending on Material,
     // and we want to avoid having the sort header depending on the CDK table because
     // of this single reference.
     super();
 
-    if (!_sort) {
+    if (!_sort && (typeof ngDevMode === 'undefined' || ngDevMode)) {
       throw getSortHeaderNotContainedWithinSortError();
     }
 
@@ -170,15 +171,8 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
             this._setAnimationTransitionState({fromState: 'active', toState: this._arrowDirection});
           }
 
-          changeDetectorRef.markForCheck();
+          _changeDetectorRef.markForCheck();
         });
-
-    if (_focusMonitor && _elementRef) {
-      // We use the focus monitor because we also want to style
-      // things differently based on the focus origin.
-      _focusMonitor.monitor(_elementRef, true)
-          .subscribe(origin => this._setIndicatorHintVisible(!!origin));
-    }
   }
 
   ngOnInit() {
@@ -194,12 +188,20 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
     this._sort.register(this);
   }
 
-  ngOnDestroy() {
-    // @breaking-change 10.0.0 Remove null check for _focusMonitor and _elementRef.
-    if (this._focusMonitor && this._elementRef) {
-      this._focusMonitor.stopMonitoring(this._elementRef);
-    }
+  ngAfterViewInit() {
+    // We use the focus monitor because we also want to style
+    // things differently based on the focus origin.
+    this._focusMonitor.monitor(this._elementRef, true).subscribe(origin => {
+      const newState = !!origin;
+      if (newState !== this._showIndicatorHint) {
+        this._setIndicatorHintVisible(newState);
+        this._changeDetectorRef.markForCheck();
+      }
+    });
+  }
 
+  ngOnDestroy() {
+    this._focusMonitor.stopMonitoring(this._elementRef);
     this._sort.deregister(this);
     this._rerenderSubscription.unsubscribe();
   }
@@ -240,8 +242,7 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
   }
 
   /** Triggers the sort on this sort header and removes the indicator hint. */
-  _handleClick() {
-    if (this._isDisabled()) { return; }
+  _toggleOnInteraction() {
 
     this._sort.sort(this);
 
@@ -258,6 +259,19 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
     this._setAnimationTransitionState(viewState);
 
     this._showIndicatorHint = false;
+  }
+
+  _handleClick() {
+    if (!this._isDisabled()) {
+      this._toggleOnInteraction();
+    }
+  }
+
+  _handleKeydown(event: KeyboardEvent) {
+    if (!this._isDisabled() && (event.keyCode === SPACE || event.keyCode === ENTER)) {
+      event.preventDefault();
+      this._toggleOnInteraction();
+    }
   }
 
   /** Whether this MatSortHeader is currently sorted in either ascending or descending order. */
@@ -304,7 +318,9 @@ export class MatSortHeader extends _MatSortHeaderMixinBase
    * ensures this is true.
    */
   _getAriaSortAttribute() {
-    if (!this._isSorted()) { return null; }
+    if (!this._isSorted()) {
+      return 'none';
+    }
 
     return this._sort.direction == 'asc' ? 'ascending' : 'descending';
   }

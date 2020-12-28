@@ -1,4 +1,11 @@
-import {async, TestBed, fakeAsync, tick, ComponentFixture, flush} from '@angular/core/testing';
+import {
+  waitForAsync,
+  TestBed,
+  fakeAsync,
+  tick,
+  ComponentFixture,
+  flush,
+} from '@angular/core/testing';
 import {Component, ViewChild} from '@angular/core';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
@@ -17,7 +24,7 @@ import {
 
 
 describe('MatExpansionPanel', () => {
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [
         MatExpansionModule,
@@ -216,6 +223,24 @@ describe('MatExpansionPanel', () => {
     expect(document.activeElement).toBe(header, 'Expected header to be focused.');
   }));
 
+  it('should not change focus origin if origin not specified', fakeAsync(() => {
+    const fixture = TestBed.createComponent(PanelWithContent);
+    fixture.componentInstance.expanded = true;
+    fixture.detectChanges();
+    tick(250);
+
+    const header = fixture.debugElement.query(By.css('mat-expansion-panel-header'))!;
+    const headerInstance = header.componentInstance;
+
+    headerInstance.focus('mouse');
+    headerInstance.focus();
+    fixture.detectChanges();
+    tick(250);
+
+    expect(header.nativeElement.classList).toContain('cdk-focused');
+    expect(header.nativeElement.classList).toContain('cdk-mouse-focused');
+  }));
+
   it('should not override the panel margin if it is not inside an accordion', fakeAsync(() => {
     const fixture = TestBed.createComponent(PanelWithCustomMargin);
     fixture.detectChanges();
@@ -351,6 +376,11 @@ describe('MatExpansionPanel', () => {
     expect(panel.componentInstance.hideToggle).toBe(true);
     expect(header.componentInstance.expandedHeight).toBe('10px');
     expect(header.componentInstance.collapsedHeight).toBe('16px');
+    expect(header.nativeElement.style.height).toBe('16px');
+
+    fixture.componentInstance.expanded = true;
+    fixture.detectChanges();
+    expect(header.nativeElement.style.height).toBe('10px');
   });
 
   describe('disabled state', () => {

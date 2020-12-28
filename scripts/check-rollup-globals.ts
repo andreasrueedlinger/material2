@@ -8,7 +8,7 @@
  * be passed to this script to ensure that the rollup globals are up-to-date.
  */
 
-import chalk from 'chalk';
+import * as chalk from 'chalk';
 import {readFileSync} from 'fs';
 import * as minimatch from 'minimatch';
 import {join, relative} from 'path';
@@ -29,6 +29,7 @@ const filesToCheckGlob = [
   'src/**/!(*.spec).ts',
   '!src/+(e2e-app|universal-app|dev-app)/**/*.ts',
   '!src/**/schematics/**/*.ts',
+  '!src/**/tests/**/*.ts',
 ];
 
 const failures = new Map<string, string[]>();

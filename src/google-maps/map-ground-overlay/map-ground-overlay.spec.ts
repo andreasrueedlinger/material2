@@ -1,5 +1,5 @@
 import {Component, ViewChild} from '@angular/core';
-import {async, TestBed} from '@angular/core/testing';
+import {waitForAsync, TestBed} from '@angular/core/testing';
 import {By} from '@angular/platform-browser';
 
 import {DEFAULT_OPTIONS} from '../google-map/google-map';
@@ -9,7 +9,6 @@ import {
   createGroundOverlaySpy,
   createMapConstructorSpy,
   createMapSpy,
-  TestingWindow,
 } from '../testing/fake-google-map-utils';
 
 import {MapGroundOverlay} from './map-ground-overlay';
@@ -22,7 +21,7 @@ describe('MapGroundOverlay', () => {
   const opacity = 0.5;
   const groundOverlayOptions: google.maps.GroundOverlayOptions = {clickable, opacity};
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [GoogleMapsModule],
       declarations: [TestApp],
@@ -37,8 +36,7 @@ describe('MapGroundOverlay', () => {
   });
 
   afterEach(() => {
-    const testingWindow: TestingWindow = window;
-    delete testingWindow.google;
+    (window.google as any) = undefined;
   });
 
   it('initializes a Google Map Ground Overlay', () => {
@@ -55,13 +53,6 @@ describe('MapGroundOverlay', () => {
 
     expect(groundOverlayConstructorSpy).toHaveBeenCalledWith(url, bounds, groundOverlayOptions);
     expect(groundOverlaySpy.setMap).toHaveBeenCalledWith(mapSpy);
-  });
-
-  it('has an error if required url or bounds are not provided', () => {
-    expect(() => {
-      const fixture = TestBed.createComponent(TestApp);
-      fixture.detectChanges();
-    }).toThrow(new Error('An image url is required'));
   });
 
   it('exposes methods that provide information about the Ground Overlay', () => {
@@ -119,6 +110,48 @@ describe('MapGroundOverlay', () => {
     expect(addSpy).toHaveBeenCalledWith('dblclick', jasmine.any(Function));
     subscription.unsubscribe();
   });
+
+  it('should be able to change the image after init', () => {
+    const groundOverlaySpy = createGroundOverlaySpy(url, bounds, groundOverlayOptions);
+    const groundOverlayConstructorSpy =
+        createGroundOverlayConstructorSpy(groundOverlaySpy).and.callThrough();
+
+    const fixture = TestBed.createComponent(TestApp);
+    fixture.componentInstance.url = url;
+    fixture.componentInstance.bounds = bounds;
+    fixture.componentInstance.clickable = clickable;
+    fixture.componentInstance.opacity = opacity;
+    fixture.detectChanges();
+
+    expect(groundOverlayConstructorSpy).toHaveBeenCalledWith(url, bounds, groundOverlayOptions);
+    expect(groundOverlaySpy.setMap).toHaveBeenCalledWith(mapSpy);
+
+    groundOverlaySpy.setMap.calls.reset();
+    fixture.componentInstance.url = 'foo.png';
+    fixture.detectChanges();
+
+    expect(groundOverlaySpy.set).toHaveBeenCalledWith('url', 'foo.png');
+    expect(groundOverlaySpy.setMap).toHaveBeenCalledTimes(2);
+    expect(groundOverlaySpy.setMap).toHaveBeenCalledWith(null);
+    expect(groundOverlaySpy.setMap).toHaveBeenCalledWith(mapSpy);
+  });
+
+  it('should recreate the ground overlay when the bounds change', () => {
+    const groundOverlaySpy = createGroundOverlaySpy(url, bounds, groundOverlayOptions);
+    createGroundOverlayConstructorSpy(groundOverlaySpy).and.callThrough();
+
+    const fixture = TestBed.createComponent(TestApp);
+    fixture.detectChanges();
+
+    const oldOverlay = fixture.componentInstance.groundOverlay.groundOverlay;
+    fixture.componentInstance.bounds = {...bounds};
+    fixture.detectChanges();
+
+    const newOverlay = fixture.componentInstance.groundOverlay.groundOverlay;
+    expect(newOverlay).toBeTruthy();
+    expect(newOverlay).not.toBe(oldOverlay);
+  });
+
 });
 
 @Component({

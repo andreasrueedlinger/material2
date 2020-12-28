@@ -1,5 +1,5 @@
 import {
-  async,
+  waitForAsync,
   ComponentFixture,
   fakeAsync,
   flush,
@@ -29,6 +29,7 @@ import {
   dispatchMouseEvent,
   createKeyboardEvent,
   dispatchEvent,
+  createFakeEvent,
 } from '@angular/cdk/testing/private';
 import {ESCAPE} from '@angular/cdk/keycodes';
 import {FocusMonitor} from '@angular/cdk/a11y';
@@ -48,13 +49,10 @@ describe('MatTooltip', () => {
   let overlayContainer: OverlayContainer;
   let overlayContainerElement: HTMLElement;
   let dir: {value: Direction};
-  let platform: {IOS: boolean, isBrowser: boolean, ANDROID: boolean};
+  let platform: Platform;
   let focusMonitor: FocusMonitor;
 
-  beforeEach(async(() => {
-    // Set the default Platform override that can be updated before component creation.
-    platform = {IOS: false, isBrowser: true, ANDROID: false};
-
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [MatTooltipModule, OverlayModule, NoopAnimationsModule],
       declarations: [
@@ -67,7 +65,6 @@ describe('MatTooltip', () => {
         DataBoundAriaLabelTooltip,
       ],
       providers: [
-        {provide: Platform, useFactory: () => platform},
         {provide: Directionality, useFactory: () => {
           return dir = {value: 'ltr'};
         }}
@@ -76,11 +73,13 @@ describe('MatTooltip', () => {
 
     TestBed.compileComponents();
 
-    inject([OverlayContainer, FocusMonitor], (oc: OverlayContainer, fm: FocusMonitor) => {
-      overlayContainer = oc;
-      overlayContainerElement = oc.getContainerElement();
-      focusMonitor = fm;
-    })();
+    inject([OverlayContainer, FocusMonitor, Platform],
+      (oc: OverlayContainer, fm: FocusMonitor, pl: Platform) => {
+        overlayContainer = oc;
+        overlayContainerElement = oc.getContainerElement();
+        focusMonitor = fm;
+        platform = pl;
+      })();
   }));
 
   afterEach(inject([OverlayContainer], (currentOverlayContainer: OverlayContainer) => {
@@ -290,7 +289,7 @@ describe('MatTooltip', () => {
       expect(tooltipDirective._isTooltipVisible()).toBe(false);
     }));
 
-    it('should not show if hide is called before delay finishes', async(() => {
+    it('should not show if hide is called before delay finishes', waitForAsync(() => {
       assertTooltipInstance(tooltipDirective, false);
 
       const tooltipDelay = 1000;
@@ -667,8 +666,7 @@ describe('MatTooltip', () => {
       tick(0);
       fixture.detectChanges();
 
-      const event = createKeyboardEvent('keydown', ESCAPE);
-      Object.defineProperty(event, 'altKey', {get: () => true});
+      const event = createKeyboardEvent('keydown', ESCAPE, undefined, {alt: true});
       dispatchEvent(buttonElement, event);
       fixture.detectChanges();
       flush();
@@ -887,6 +885,11 @@ describe('MatTooltip', () => {
     }));
 
     it('should have rendered the tooltip text on init', fakeAsync(() => {
+      // We don't bind mouse events on mobile devices.
+      if (platform.IOS || platform.ANDROID) {
+        return;
+      }
+
       dispatchFakeEvent(buttonElement, 'mouseenter');
       fixture.detectChanges();
       tick(0);
@@ -1018,12 +1021,12 @@ describe('MatTooltip', () => {
 
       expect(inputStyle.userSelect).toBeFalsy();
       expect(inputStyle.webkitUserSelect).toBeFalsy();
-      expect(inputStyle.msUserSelect).toBeFalsy();
+      expect((inputStyle as any).msUserSelect).toBeFalsy();
       expect((inputStyle as any).MozUserSelect).toBeFalsy();
 
       expect(textareaStyle.userSelect).toBeFalsy();
       expect(textareaStyle.webkitUserSelect).toBeFalsy();
-      expect(textareaStyle.msUserSelect).toBeFalsy();
+      expect((textareaStyle as any).msUserSelect).toBeFalsy();
       expect((textareaStyle as any).MozUserSelect).toBeFalsy();
     });
 
@@ -1034,10 +1037,11 @@ describe('MatTooltip', () => {
 
       const inputStyle = fixture.componentInstance.input.nativeElement.style;
       const inputUserSelect = inputStyle.userSelect || inputStyle.webkitUserSelect ||
-                              inputStyle.msUserSelect || (inputStyle as any).MozUserSelect;
+                              (inputStyle as any).msUserSelect || (inputStyle as any).MozUserSelect;
       const textareaStyle = fixture.componentInstance.textarea.nativeElement.style;
       const textareaUserSelect = textareaStyle.userSelect || textareaStyle.webkitUserSelect ||
-                                 textareaStyle.msUserSelect || (textareaStyle as any).MozUserSelect;
+                                 (textareaStyle as any).msUserSelect ||
+                                 (textareaStyle as any).MozUserSelect;
 
       expect(inputUserSelect).toBe('none');
       expect(textareaUserSelect).toBe('none');
@@ -1087,6 +1091,75 @@ describe('MatTooltip', () => {
 
       assertTooltipInstance(fixture.componentInstance.tooltip, false);
     });
+  });
+
+  describe('mouse wheel handling', () => {
+    it('should close when a wheel event causes the cursor to leave the trigger', fakeAsync(() => {
+      // We don't bind wheel events on mobile devices.
+      if (platform.IOS || platform.ANDROID) {
+        return;
+      }
+
+      const fixture = TestBed.createComponent(BasicTooltipDemo);
+      fixture.detectChanges();
+      const button: HTMLButtonElement = fixture.nativeElement.querySelector('button');
+
+      dispatchFakeEvent(button, 'mouseenter');
+      fixture.detectChanges();
+      tick(500); // Finish the open delay.
+      fixture.detectChanges();
+      tick(500); // Finish the animation.
+      assertTooltipInstance(fixture.componentInstance.tooltip, true);
+
+      // Simulate the pointer at the bottom/right of the page.
+      const wheelEvent = createFakeEvent('wheel');
+      Object.defineProperties(wheelEvent, {
+        clientX: {get: () => window.innerWidth},
+        clientY: {get: () => window.innerHeight}
+      });
+
+      dispatchEvent(button, wheelEvent);
+      fixture.detectChanges();
+      tick(1500); // Finish the delay.
+      fixture.detectChanges();
+      tick(500); // Finish the exit animation.
+
+      assertTooltipInstance(fixture.componentInstance.tooltip, false);
+    }));
+
+    it('should not close if the cursor is over the trigger after a wheel event', fakeAsync(() => {
+      // We don't bind wheel events on mobile devices.
+      if (platform.IOS || platform.ANDROID) {
+        return;
+      }
+
+      const fixture = TestBed.createComponent(BasicTooltipDemo);
+      fixture.detectChanges();
+      const button: HTMLButtonElement = fixture.nativeElement.querySelector('button');
+
+      dispatchFakeEvent(button, 'mouseenter');
+      fixture.detectChanges();
+      tick(500); // Finish the open delay.
+      fixture.detectChanges();
+      tick(500); // Finish the animation.
+      assertTooltipInstance(fixture.componentInstance.tooltip, true);
+
+      // Simulate the pointer over the trigger.
+      const triggerRect = button.getBoundingClientRect();
+      const wheelEvent = createFakeEvent('wheel');
+      Object.defineProperties(wheelEvent, {
+        clientX: {get: () => triggerRect.left + 1},
+        clientY: {get: () => triggerRect.top + 1}
+      });
+
+      dispatchEvent(button, wheelEvent);
+      fixture.detectChanges();
+      tick(1500); // Finish the delay.
+      fixture.detectChanges();
+      tick(500); // Finish the exit animation.
+
+      assertTooltipInstance(fixture.componentInstance.tooltip, true);
+    }));
   });
 
 });
@@ -1167,7 +1240,7 @@ class OnPushTooltipDemo {
     </button>`,
 })
 class DynamicTooltipsDemo {
-  tooltips: Array<string> = [];
+  tooltips: string[] = [];
 }
 
 @Component({

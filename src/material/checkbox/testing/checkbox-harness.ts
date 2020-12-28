@@ -13,7 +13,7 @@ import {CheckboxHarnessFilters} from './checkbox-harness-filters';
 /** Harness for interacting with a standard mat-checkbox in tests. */
 export class MatCheckboxHarness extends ComponentHarness {
   /** The selector for the host element of a `MatCheckbox` instance. */
-  static hostSelector = 'mat-checkbox';
+  static hostSelector = '.mat-checkbox';
 
   /**
    * Gets a `HarnessPredicate` that can be used to search for a `MatCheckboxHarness` that meets
@@ -101,11 +101,16 @@ export class MatCheckboxHarness extends ComponentHarness {
     return (await this._input()).blur();
   }
 
+  /** Whether the checkbox is focused. */
+  async isFocused(): Promise<boolean> {
+    return (await this._input()).isFocused();
+  }
+
   /**
    * Toggles the checked state of the checkbox.
    *
    * Note: This attempts to toggle the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async toggle(): Promise<void> {
@@ -117,7 +122,7 @@ export class MatCheckboxHarness extends ComponentHarness {
    * nothing if it is already checked.
    *
    * Note: This attempts to check the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async check(): Promise<void> {
@@ -131,7 +136,7 @@ export class MatCheckboxHarness extends ComponentHarness {
    * nothing if it is already unchecked.
    *
    * Note: This attempts to uncheck the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async uncheck(): Promise<void> {

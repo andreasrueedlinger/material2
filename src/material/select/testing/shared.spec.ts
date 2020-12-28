@@ -1,5 +1,5 @@
 import {OverlayContainer} from '@angular/cdk/overlay';
-import {HarnessLoader} from '@angular/cdk/testing';
+import {HarnessLoader, parallel} from '@angular/cdk/testing';
 import {TestbedHarnessEnvironment} from '@angular/cdk/testing/testbed';
 import {Component} from '@angular/core';
 import {ComponentFixture, inject, TestBed} from '@angular/core/testing';
@@ -11,7 +11,9 @@ import {MatSelectHarness} from './select-harness';
 
 /** Shared tests to run on both the original and MDC-based select. */
 export function runHarnessTests(
-    selectModule: typeof MatSelectModule, selectHarness: typeof MatSelectHarness) {
+    formFieldModule: typeof MatFormFieldModule,
+    selectModule: typeof MatSelectModule,
+    selectHarness: typeof MatSelectHarness) {
   let fixture: ComponentFixture<SelectHarnessTest>;
   let loader: HarnessLoader;
   let overlayContainer: OverlayContainer;
@@ -20,7 +22,7 @@ export function runHarnessTests(
     await TestBed.configureTestingModule({
       imports: [
         selectModule,
-        MatFormFieldModule,
+        formFieldModule,
         NoopAnimationsModule,
         ReactiveFormsModule,
       ],
@@ -105,11 +107,11 @@ export function runHarnessTests(
 
   it('should focus and blur a select', async () => {
     const select = await loader.getHarness(selectHarness.with({selector: '#single-selection'}));
-    expect(getActiveElementId()).not.toBe('single-selection');
+    expect(await select.isFocused()).toBe(false);
     await select.focus();
-    expect(getActiveElementId()).toBe('single-selection');
+    expect(await select.isFocused()).toBe(true);
     await select.blur();
-    expect(getActiveElementId()).not.toBe('single-selection');
+    expect(await select.isFocused()).toBe(false);
   });
 
   it('should be able to open and close a single-selection select', async () => {
@@ -164,7 +166,7 @@ export function runHarnessTests(
     const groupedSelect = await loader.getHarness(selectHarness.with({selector: '#grouped'}));
     await groupedSelect.open();
 
-    const [singleOptions, groupedOptions] = await Promise.all([
+    const [singleOptions, groupedOptions] = await parallel(() => [
       singleSelect.getOptions(),
       groupedSelect.getOptions()
     ]);
@@ -234,10 +236,6 @@ export function runHarnessTests(
     expect(control.value).toBe('CA');
   });
 
-}
-
-function getActiveElementId() {
-  return document.activeElement ? document.activeElement.id : '';
 }
 
 @Component({

@@ -1,7 +1,9 @@
+@import '@material/theme/mixins.import';
+@import '@material/textfield/variables.import';
 @import 'form-field-sizing';
 @import '../mdc-helpers/mdc-helpers';
 
-@mixin _mat-form-field-subscript() {
+@mixin mat-mdc-private-form-field-subscript() {
   // Wrapper for the hints and error messages.
   .mat-mdc-form-field-subscript-wrapper {
     box-sizing: border-box;
@@ -34,14 +36,17 @@
   }
 }
 
-@mixin _mat-form-field-subscript-theme() {
+@mixin mat-mdc-private-form-field-subscript-color() {
   // MDC does not have built-in error treatment.
   .mat-mdc-form-field-error {
     @include mdc-theme-prop(color, $mdc-text-field-error);
   }
 }
 
-@mixin _mat-form-field-subscript-typography($config) {
+// We need to define our own typography for the subscript because we don't include MDC's
+// helper text in our MDC based form field
+@mixin mat-mdc-private-form-field-subscript-typography($config-or-theme) {
+  $config: mat-get-typography-config($config-or-theme);
   // The unit-less line-height from the font config.
   $line-height: mat-line-height($config, input);
   // The amount to scale the font for the subscript.
@@ -56,6 +61,8 @@
   // combination of the subscript's margin and line-height, but we need to multiply by the
   // subscript font scale factor since the subscript has a reduced font size.
   $subscript-min-height: ($subscript-margin-top + $line-height) * $subscript-font-scale;
+  // The horizontal padding between the edge of the text box and the start of the subscript text.
+  $subscript-horizontal-padding: 16px;
 
   // The subscript wrapper has a minimum height to avoid that the form-field
   // jumps when hints or errors are displayed.
@@ -63,5 +70,6 @@
     min-height: $subscript-min-height;
     font-size: $subscript-font-size;
     margin-top: $subscript-margin-top;
+    padding: 0 $subscript-horizontal-padding;
   }
 }

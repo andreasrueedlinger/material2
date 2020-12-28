@@ -23,7 +23,7 @@ import {map, take, takeUntil} from 'rxjs/operators';
 
 import {GoogleMap} from '../google-map/google-map';
 import {MapEventManager} from '../map-event-manager';
-import {MapMarker} from '../map-marker/map-marker';
+import {MapAnchorPoint} from '../map-anchor-point';
 
 /**
  * Angular component that renders a Google Maps info window via the Google Maps JavaScript API.
@@ -32,6 +32,7 @@ import {MapMarker} from '../map-marker/map-marker';
  */
 @Directive({
   selector: 'map-info-window',
+  exportAs: 'mapInfoWindow',
   host: {'style': 'display: none'},
 })
 export class MapInfoWindow implements OnInit, OnDestroy {
@@ -135,7 +136,7 @@ export class MapInfoWindow implements OnInit, OnDestroy {
    */
   close() {
     this._assertInitialized();
-    this.infoWindow!.close();
+    this.infoWindow.close();
   }
 
   /**
@@ -144,7 +145,7 @@ export class MapInfoWindow implements OnInit, OnDestroy {
    */
   getContent(): string|Node {
     this._assertInitialized();
-    return this.infoWindow!.getContent();
+    return this.infoWindow.getContent();
   }
 
   /**
@@ -154,7 +155,7 @@ export class MapInfoWindow implements OnInit, OnDestroy {
    */
   getPosition(): google.maps.LatLng|null {
     this._assertInitialized();
-    return this.infoWindow!.getPosition();
+    return this.infoWindow.getPosition();
   }
 
   /**
@@ -163,18 +164,25 @@ export class MapInfoWindow implements OnInit, OnDestroy {
    */
   getZIndex(): number {
     this._assertInitialized();
-    return this.infoWindow!.getZIndex();
+    return this.infoWindow.getZIndex();
   }
 
   /**
-   * Opens the MapInfoWindow using the provided MapMarker as the anchor. If the anchor is not set,
+   * Opens the MapInfoWindow using the provided anchor. If the anchor is not set,
    * then the position property of the options input is used instead.
    */
-  open(anchor?: MapMarker) {
+  open(anchor?: MapAnchorPoint) {
     this._assertInitialized();
-    const marker = anchor ? anchor.marker : undefined;
-    this._elementRef.nativeElement.style.display = '';
-    this.infoWindow!.open(this._googleMap.googleMap, marker);
+    const anchorObject = anchor ? anchor.getAnchor() : undefined;
+
+    // Prevent the info window from initializing when trying to reopen on the same anchor.
+    // Note that when the window is opened for the first time, the anchor will always be
+    // undefined. If that's the case, we have to allow it to open in order to handle the
+    // case where the window doesn't have an anchor, but is placed at a particular position.
+    if (this.infoWindow.get('anchor') !== anchorObject || !anchorObject) {
+      this._elementRef.nativeElement.style.display = '';
+      this.infoWindow.open(this._googleMap.googleMap, anchorObject);
+    }
   }
 
   private _combineOptions(): Observable<google.maps.InfoWindowOptions> {
@@ -191,7 +199,7 @@ export class MapInfoWindow implements OnInit, OnDestroy {
   private _watchForOptionsChanges() {
     this._options.pipe(takeUntil(this._destroy)).subscribe(options => {
       this._assertInitialized();
-      this.infoWindow!.setOptions(options);
+      this.infoWindow.setOptions(options);
     });
   }
 
@@ -199,22 +207,24 @@ export class MapInfoWindow implements OnInit, OnDestroy {
     this._position.pipe(takeUntil(this._destroy)).subscribe(position => {
       if (position) {
         this._assertInitialized();
-        this.infoWindow!.setPosition(position);
+        this.infoWindow.setPosition(position);
       }
     });
   }
 
-  private _assertInitialized() {
-    if (!this._googleMap.googleMap) {
-      throw Error(
-          'Cannot access Google Map information before the API has been initialized. ' +
-          'Please wait for the API to load before trying to interact with it.');
-    }
-    if (!this.infoWindow) {
-      throw Error(
-          'Cannot interact with a Google Map Info Window before it has been ' +
-          'initialized. Please wait for the Info Window to load before trying to interact with ' +
-          'it.');
+  private _assertInitialized(): asserts this is {infoWindow: google.maps.InfoWindow} {
+    if (typeof ngDevMode === 'undefined' || ngDevMode) {
+      if (!this._googleMap.googleMap) {
+        throw Error(
+            'Cannot access Google Map information before the API has been initialized. ' +
+            'Please wait for the API to load before trying to interact with it.');
+      }
+      if (!this.infoWindow) {
+        throw Error(
+            'Cannot interact with a Google Map Info Window before it has been ' +
+            'initialized. Please wait for the Info Window to load before trying to interact with ' +
+            'it.');
+      }
     }
   }
 }

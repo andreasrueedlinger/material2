@@ -1,4 +1,4 @@
-import {async, ComponentFixture, TestBed} from '@angular/core/testing';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
 import {Component, DebugElement} from '@angular/core';
 import {By} from '@angular/platform-browser';
 import {MatButtonModule, MatButton} from './index';
@@ -7,7 +7,7 @@ import {MatRipple, ThemePalette} from '@angular/material/core';
 
 describe('MatButton', () => {
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [MatButtonModule],
       declarations: [TestApp],
@@ -72,6 +72,7 @@ describe('MatButton', () => {
 
   it('should be able to focus button with a specific focus origin', () => {
     const fixture = TestBed.createComponent(TestApp);
+    fixture.detectChanges();
     const buttonDebugEl = fixture.debugElement.query(By.css('button'));
     const buttonInstance = buttonDebugEl.componentInstance as MatButton;
 
@@ -81,6 +82,23 @@ describe('MatButton', () => {
 
     expect(buttonDebugEl.nativeElement.classList).toContain('cdk-focused');
     expect(buttonDebugEl.nativeElement.classList).toContain('cdk-touch-focused');
+  });
+
+  it('should not change focus origin if origin not specified', () => {
+    const fixture = TestBed.createComponent(TestApp);
+    fixture.detectChanges();
+
+    const fabButtonDebugEl = fixture.debugElement.query(By.css('button[mat-fab]'))!;
+    const fabButtonInstance = fabButtonDebugEl.componentInstance as MatButton;
+    fabButtonInstance.focus('mouse');
+
+    const miniFabButtonDebugEl = fixture.debugElement.query(By.css('button[mat-mini-fab]'))!;
+    const miniFabButtonInstance = miniFabButtonDebugEl.componentInstance as MatButton;
+
+    miniFabButtonInstance.focus();
+
+    expect(miniFabButtonDebugEl.nativeElement.classList).toContain('cdk-focused');
+    expect(miniFabButtonDebugEl.nativeElement.classList).toContain('cdk-mouse-focused');
   });
 
   describe('button[mat-fab]', () => {

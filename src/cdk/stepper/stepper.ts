@@ -14,7 +14,7 @@ import {
   coerceNumberProperty,
   NumberInput
 } from '@angular/cdk/coercion';
-import {END, ENTER, hasModifierKey, HOME, SPACE} from '@angular/cdk/keycodes';
+import {ENTER, hasModifierKey, SPACE} from '@angular/cdk/keycodes';
 import {DOCUMENT} from '@angular/common';
 import {
   AfterViewInit,
@@ -38,6 +38,7 @@ import {
   TemplateRef,
   ViewChild,
   ViewEncapsulation,
+  AfterContentInit,
 } from '@angular/core';
 import {Observable, of as observableOf, Subject} from 'rxjs';
 import {startWith, takeUntil} from 'rxjs/operators';
@@ -201,7 +202,7 @@ export class CdkStep implements OnChanges {
 
   /** @breaking-change 8.0.0 remove the `?` after `stepperOptions` */
   constructor(
-      @Inject(forwardRef(() => CdkStepper)) private _stepper: CdkStepper,
+      @Inject(forwardRef(() => CdkStepper)) public _stepper: CdkStepper,
       @Optional() @Inject(STEPPER_GLOBAL_OPTIONS) stepperOptions?: StepperOptions) {
     this._stepperOptions = stepperOptions ? stepperOptions : {};
     this._displayDefaultIndicatorType = this._stepperOptions.displayDefaultIndicatorType !== false;
@@ -246,7 +247,7 @@ export class CdkStep implements OnChanges {
   selector: '[cdkStepper]',
   exportAs: 'cdkStepper',
 })
-export class CdkStepper implements AfterViewInit, OnDestroy {
+export class CdkStepper implements AfterContentInit, AfterViewInit, OnDestroy {
   /** Emits when the component is destroyed. */
   protected _destroyed = new Subject<void>();
 
@@ -259,17 +260,11 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
    */
   private _document: Document|undefined;
 
-  /**
-   * The list of step components that the stepper is holding.
-   * @deprecated use `steps` instead
-   * @breaking-change 9.0.0 remove this property
-   */
+  /** Full list of steps inside the stepper, including inside nested steppers. */
   @ContentChildren(CdkStep, {descendants: true}) _steps: QueryList<CdkStep>;
 
-  /** The list of step components that the stepper is holding. */
-  get steps(): QueryList<CdkStep> {
-    return this._steps;
-  }
+  /** Steps that belong to the current stepper, excluding ones from nested steppers. */
+  readonly steps: QueryList<CdkStep> = new QueryList<CdkStep>();
 
   /**
    * The list of step headers of the steps in the stepper.
@@ -296,13 +291,13 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
   set selectedIndex(index: number) {
     const newIndex = coerceNumberProperty(index);
 
-    if (this.steps) {
+    if (this.steps && this._steps) {
       // Ensure that the index can't be out of bounds.
-      if (newIndex < 0 || newIndex > this.steps.length - 1) {
+      if (!this._isValidIndex(index) && (typeof ngDevMode === 'undefined' || ngDevMode)) {
         throw Error('cdkStepper: Cannot assign out-of-bounds value to `selectedIndex`.');
       }
 
-      if (this._selectedIndex != newIndex && !this._anyControlsInvalidOrPending(newIndex) &&
+      if (this._selectedIndex !== newIndex && !this._anyControlsInvalidOrPending(newIndex) &&
           (newIndex >= this._selectedIndex || this.steps.toArray()[newIndex].editable)) {
         this._updateSelectedItemIndex(index);
       }
@@ -339,12 +334,22 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
     this._document = _document;
   }
 
+  ngAfterContentInit() {
+    this._steps.changes
+      .pipe(startWith(this._steps), takeUntil(this._destroyed))
+      .subscribe((steps: QueryList<CdkStep>) => {
+        this.steps.reset(steps.filter(step => step._stepper === this));
+        this.steps.notifyOnChanges();
+      });
+  }
+
   ngAfterViewInit() {
     // Note that while the step headers are content children by default, any components that
     // extend this one might have them as view children. We initialize the keyboard handling in
     // AfterViewInit so we're guaranteed for both view and content children to be defined.
     this._keyManager = new FocusKeyManager<FocusableOption>(this._stepHeader)
                            .withWrap()
+                           .withHomeAndEnd()
                            .withVerticalOrientation(this._orientation === 'vertical');
 
     (this._dir ? (this._dir.change as Observable<Direction>) : observableOf<Direction>())
@@ -353,14 +358,23 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
 
     this._keyManager.updateActiveItem(this._selectedIndex);
 
-    this.steps.changes.pipe(takeUntil(this._destroyed)).subscribe(() => {
+    // No need to `takeUntil` here, because we're the ones destroying `steps`.
+    this.steps.changes.subscribe(() => {
       if (!this.selected) {
         this._selectedIndex = Math.max(this._selectedIndex - 1, 0);
       }
     });
+
+    // The logic which asserts that the selected index is within bounds doesn't run before the
+    // steps are initialized, because we don't how many steps there are yet so we may have an
+    // invalid index on init. If that's the case, auto-correct to the default so we don't throw.
+    if (!this._isValidIndex(this._selectedIndex)) {
+      this._selectedIndex = 0;
+    }
   }
 
   ngOnDestroy() {
+    this.steps.destroy();
     this._destroyed.next();
     this._destroyed.complete();
   }
@@ -480,12 +494,6 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
         (keyCode === SPACE || keyCode === ENTER)) {
       this.selectedIndex = manager.activeItemIndex;
       event.preventDefault();
-    } else if (keyCode === HOME) {
-      manager.setFirstItemActive();
-      event.preventDefault();
-    } else if (keyCode === END) {
-      manager.setLastItemActive();
-      event.preventDefault();
     } else {
       manager.onKeydown(event);
     }
@@ -521,6 +529,11 @@ export class CdkStepper implements AfterViewInit, OnDestroy {
     const stepperElement = this._elementRef.nativeElement;
     const focusedElement = this._document.activeElement;
     return stepperElement === focusedElement || stepperElement.contains(focusedElement);
+  }
+
+  /** Checks whether the passed-in index is a valid step index. */
+  private _isValidIndex(index: number): boolean {
+    return index > -1 && (!this.steps || index < this.steps.length);
   }
 
   static ngAcceptInputType_editable: BooleanInput;

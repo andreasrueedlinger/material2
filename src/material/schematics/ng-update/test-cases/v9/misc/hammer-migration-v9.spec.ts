@@ -1,32 +1,27 @@
 import {SchematicTestRunner, UnitTestTree} from '@angular-devkit/schematics/testing';
 import {dedent} from '@angular/cdk/testing/private';
 import {addPackageToPackageJson} from '@angular/cdk/schematics/ng-add/package-config';
-import {createTestCaseSetup} from '@angular/cdk/schematics/testing';
+import {createTestCaseSetup, resolveBazelPath} from '@angular/cdk/schematics/testing';
 import {readFileSync} from 'fs';
-
-import {migrationCollection} from '../../index.spec';
+import {MIGRATION_PATH} from '../../../../index.spec';
 
 describe('v9 HammerJS removal', () => {
-  const GESTURE_CONFIG_TEMPLATE_PATH =
-      require.resolve('../../../upgrade-rules/hammer-gestures-v9/gesture-config.template');
+  const GESTURE_CONFIG_TEMPLATE_PATH = resolveBazelPath(__dirname,
+      '../../../migrations/hammer-gestures-v9/gesture-config.template');
 
   let runner: SchematicTestRunner;
   let tree: UnitTestTree;
   let writeFile: (filePath: string, text: string) => void;
   let runMigration: () => Promise<{logOutput: string}>;
-  let cleanupTest: () => void;
 
   beforeEach(async () => {
-    const testSetup = await createTestCaseSetup('migration-v9', migrationCollection, []);
+    const testSetup = await createTestCaseSetup('migration-v9', MIGRATION_PATH, []);
 
     runner = testSetup.runner;
     tree = testSetup.appTree;
     runMigration = testSetup.runFixers;
     writeFile = testSetup.writeFile;
-    cleanupTest = testSetup.removeTempDir;
   });
-
-  afterEach(() => cleanupTest());
 
   function appendContent(filePath: string, text: string) {
     writeFile(filePath, text + tree.readContent(filePath))
@@ -434,8 +429,8 @@ describe('v9 HammerJS removal', () => {
       await runMigration();
 
       expect(tree.readContent('/projects/cdk-testing/src/app/app.module.ts')).toContain(dedent`\
-        import { BrowserModule, HammerModule } from '@angular/platform-browser';
         import { NgModule } from '@angular/core';
+        import { BrowserModule, HammerModule } from '@angular/platform-browser';
 
         import { AppComponent } from './app.component';
 
@@ -462,7 +457,7 @@ describe('v9 HammerJS removal', () => {
         import {NgModule} from '@angular/core';
         import {HAMMER_GESTURE_CONFIG} from '@angular/platform-browser';
         import {GestureConfig} from '@angular/material/core';
-        
+
         @NgModule({
           providers: [{provide: HAMMER_GESTURE_CONFIG, useClass: GestureConfig}]
         })
@@ -662,8 +657,8 @@ describe('v9 HammerJS removal', () => {
       expect(tree.readContent('/projects/cdk-testing/src/main.ts')).toContain(`import 'hammerjs';`);
       expect(tree.exists('/projects/cdk-testing/src/gesture-config.ts')).toBe(true);
       expect(tree.readContent('/projects/cdk-testing/src/app/app.module.ts')).toContain(dedent`\
-        import { BrowserModule, HAMMER_GESTURE_CONFIG, HammerModule } from '@angular/platform-browser';
         import { NgModule } from '@angular/core';
+        import { BrowserModule, HAMMER_GESTURE_CONFIG, HammerModule } from '@angular/platform-browser';
 
         import { AppComponent } from './app.component';
         import { GestureConfig } from "../gesture-config";
@@ -692,14 +687,14 @@ describe('v9 HammerJS removal', () => {
         import 'hammerjs';
         import { enableProdMode } from '@angular/core';
         import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-        
+
         import { AppModule } from './app/';
         import { environment } from './environments/environment';
-        
+
         if (environment.production) {
           enableProdMode();
         }
-        
+
         platformBrowserDynamic().bootstrapModule(AppModule)
           .catch(err => console.error(err));
       `);
@@ -711,8 +706,8 @@ describe('v9 HammerJS removal', () => {
       expect(tree.readContent('/projects/cdk-testing/src/main.ts')).toContain(`import 'hammerjs';`);
       expect(tree.exists('/projects/cdk-testing/src/gesture-config.ts')).toBe(true);
       expect(tree.readContent('/projects/cdk-testing/src/app/app.module.ts')).toContain(dedent`\
-        import { BrowserModule, HAMMER_GESTURE_CONFIG, HammerModule } from '@angular/platform-browser';
         import { NgModule } from '@angular/core';
+        import { BrowserModule, HAMMER_GESTURE_CONFIG, HammerModule } from '@angular/platform-browser';
 
         import { AppComponent } from './app.component';
         import { GestureConfig } from "../gesture-config";

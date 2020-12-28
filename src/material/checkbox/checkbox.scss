@@ -4,7 +4,7 @@
 @import '../core/ripple/ripple';
 @import '../core/style/layout-common';
 @import '../core/style/vendor-prefixes';
-@import '../core/style/noop-animation';
+@import '../core/style/private';
 @import '../../cdk/a11y/a11y';
 
 // Manual calculation done on SVG
@@ -175,7 +175,11 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
 }
 
 .mat-checkbox {
-  @include _noop-animation();
+  @include mat-private-animation-noop();
+
+  // The host node defaults to `diplay: inline` so
+  // we have to change it in order for margins to work.
+  display: inline-block;
 
   // Animation
   transition: background $swift-ease-out-duration $swift-ease-out-timing-function,
@@ -242,8 +246,8 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
   @extend %mat-checkbox-outer-box;
 
   background-color: transparent;
-  transition:
-      border-color $mat-checkbox-transition-duration $mat-linear-out-slow-in-timing-function;
+  transition: border-color $mat-checkbox-transition-duration
+      $mat-linear-out-slow-in-timing-function;
   border: {
     width: $mat-checkbox-border-width;
     style: solid;
@@ -253,10 +257,10 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
     transition: none;
   }
 
-  @include cdk-high-contrast(active, off) {
-    // Note that we change the border style of the checkbox frame to dotted because this
-    // is how IE/Edge similarly treats native checkboxes in high contrast mode.
-    .mat-checkbox.cdk-keyboard-focused & {
+  .mat-checkbox.cdk-keyboard-focused & {
+    @include cdk-high-contrast(active, off) {
+      // Note that we change the border style of the checkbox frame to dotted because this
+      // is how IE/Edge similarly treats native checkboxes in high contrast mode.
       border-style: dotted;
     }
   }
@@ -287,6 +291,7 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
 }
 
 .mat-checkbox-persistent-ripple {
+  display: block;
   width: 100%;
   height: 100%;
   transform: none;
@@ -437,8 +442,8 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
     }
 
     .mat-checkbox-mixedmark {
-      animation:
-        $mat-checkbox-transition-duration linear 0ms mat-checkbox-unchecked-indeterminate-mixedmark;
+      animation: $mat-checkbox-transition-duration linear 0ms
+          mat-checkbox-unchecked-indeterminate-mixedmark;
     }
   }
 
@@ -448,32 +453,32 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
     }
 
     .mat-checkbox-checkmark-path {
-      animation:
-        $mat-checkbox-transition-duration linear 0ms mat-checkbox-checked-unchecked-checkmark-path;
+      animation: $mat-checkbox-transition-duration linear 0ms
+          mat-checkbox-checked-unchecked-checkmark-path;
     }
   }
 
   &-checked-indeterminate {
     .mat-checkbox-checkmark {
-      animation:
-        $mat-checkbox-transition-duration linear 0ms mat-checkbox-checked-indeterminate-checkmark;
+      animation: $mat-checkbox-transition-duration linear 0ms
+          mat-checkbox-checked-indeterminate-checkmark;
     }
 
     .mat-checkbox-mixedmark {
-      animation:
-        $mat-checkbox-transition-duration linear 0ms mat-checkbox-checked-indeterminate-mixedmark;
+      animation: $mat-checkbox-transition-duration linear 0ms
+          mat-checkbox-checked-indeterminate-mixedmark;
     }
   }
 
   &-indeterminate-checked {
     .mat-checkbox-checkmark {
-      animation:
-        $indeterminate-change-duration linear 0ms mat-checkbox-indeterminate-checked-checkmark;
+      animation: $indeterminate-change-duration linear 0ms
+          mat-checkbox-indeterminate-checked-checkmark;
     }
 
     .mat-checkbox-mixedmark {
-      animation:
-        $indeterminate-change-duration linear 0ms mat-checkbox-indeterminate-checked-mixedmark;
+      animation: $indeterminate-change-duration linear 0ms
+          mat-checkbox-indeterminate-checked-mixedmark;
     }
   }
 
@@ -483,9 +488,8 @@ $_mat-checkbox-mark-stroke-size: 2 / 15 * $mat-checkbox-size !default;
     }
 
     .mat-checkbox-mixedmark {
-      animation:
-        $indeterminate-change-duration * 0.6 linear 0ms
-        mat-checkbox-indeterminate-unchecked-mixedmark;
+      animation: $indeterminate-change-duration * 0.6 linear 0ms
+          mat-checkbox-indeterminate-unchecked-mixedmark;
     }
   }
 }

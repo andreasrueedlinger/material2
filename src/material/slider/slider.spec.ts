@@ -174,12 +174,12 @@ describe('MatSlider', () => {
       sliderInstance.value = 0;
       fixture.detectChanges();
 
-      expect(sliderInstance._thumbGap).toBe(10);
+      expect(sliderInstance._getThumbGap()).toBe(10);
 
       dispatchFakeEvent(sliderNativeElement, 'blur');
       fixture.detectChanges();
 
-      expect(sliderInstance._thumbGap).toBe(7);
+      expect(sliderInstance._getThumbGap()).toBe(7);
     });
 
     it('should have thumb gap when at min value', () => {
@@ -391,6 +391,29 @@ describe('MatSlider', () => {
       expect(ticksElement.style.transform).toContain('translateX(25%)');
       expect(ticksContainerElement.style.transform).toBe('translateX(-25%)');
     });
+
+    it('should be able to set the min and max values when they are more precise ' +
+      'than the step', () => {
+      // Note that we assign min/max with more decimals than the
+      // step to ensure that the value doesn't get rounded up.
+      testComponent.step = 0.5;
+      testComponent.min = 10.15;
+      testComponent.max = 50.15;
+      fixture.detectChanges();
+
+      dispatchSlideEventSequence(sliderNativeElement, 0.5, 0);
+      fixture.detectChanges();
+
+      expect(sliderInstance.value).toBe(10.15);
+      expect(sliderInstance.percent).toBe(0);
+
+      dispatchSlideEventSequence(sliderNativeElement, 0.5, 1);
+      fixture.detectChanges();
+
+      expect(sliderInstance.value).toBe(50.15);
+      expect(sliderInstance.percent).toBe(1);
+    });
+
   });
 
   describe('slider with set value', () => {
@@ -505,6 +528,37 @@ describe('MatSlider', () => {
       }
 
       expect(sliderInstance.value).toBe(0.3);
+    });
+
+    it('should set the truncated value to the aria-valuetext', () => {
+      fixture.componentInstance.step = 0.1;
+      fixture.detectChanges();
+
+      dispatchSlideEventSequence(sliderNativeElement, 0, 0.333333);
+      fixture.detectChanges();
+
+      expect(sliderNativeElement.getAttribute('aria-valuetext')).toBe('33');
+    });
+
+    it('should be able to override the aria-valuetext', () => {
+      fixture.componentInstance.step = 0.1;
+      fixture.componentInstance.valueText = 'custom';
+      fixture.detectChanges();
+
+      dispatchSlideEventSequence(sliderNativeElement, 0, 0.333333);
+      fixture.detectChanges();
+
+      expect(sliderNativeElement.getAttribute('aria-valuetext')).toBe('custom');
+    });
+
+    it('should be able to clear aria-valuetext', () => {
+      fixture.componentInstance.valueText = '';
+      fixture.detectChanges();
+
+      dispatchSlideEventSequence(sliderNativeElement, 0, 0.333333);
+      fixture.detectChanges();
+
+      expect(sliderNativeElement.getAttribute('aria-valuetext')).toBeFalsy();
     });
 
   });
@@ -763,11 +817,12 @@ describe('MatSlider', () => {
       sliderNativeElement = sliderDebugElement.nativeElement;
     });
 
-    it('should emit change on mousedown', () => {
+    it('should emit change on mouseup', () => {
       expect(testComponent.onChange).not.toHaveBeenCalled();
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.2);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.2);
 
       expect(testComponent.onChange).toHaveBeenCalledTimes(1);
     });
@@ -799,11 +854,14 @@ describe('MatSlider', () => {
       dispatchMousedownEventSequence(sliderNativeElement, 0.2);
       fixture.detectChanges();
 
-      expect(testComponent.onChange).toHaveBeenCalledTimes(1);
+      expect(testComponent.onChange).not.toHaveBeenCalled();
       expect(testComponent.onInput).toHaveBeenCalledTimes(1);
 
       dispatchSlideEndEvent(sliderNativeElement, 0.2);
       fixture.detectChanges();
+
+      expect(testComponent.onChange).toHaveBeenCalledTimes(1);
+      expect(testComponent.onInput).toHaveBeenCalledTimes(1);
 
       testComponent.slider.value = 0;
       fixture.detectChanges();
@@ -813,6 +871,7 @@ describe('MatSlider', () => {
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.2);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.2);
 
       expect(testComponent.onChange).toHaveBeenCalledTimes(2);
       expect(testComponent.onInput).toHaveBeenCalledTimes(2);
@@ -857,8 +916,8 @@ describe('MatSlider', () => {
       expect(testComponent.onChange).not.toHaveBeenCalled();
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.75);
-
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.75);
 
       // The `onInput` event should be emitted once due to a single click.
       expect(testComponent.onInput).toHaveBeenCalledTimes(1);
@@ -1012,8 +1071,7 @@ describe('MatSlider', () => {
         UP_ARROW, DOWN_ARROW, RIGHT_ARROW,
         LEFT_ARROW, PAGE_DOWN, PAGE_UP, HOME, END
       ].forEach(key => {
-        const event = createKeyboardEvent('keydown', key);
-        Object.defineProperty(event, 'altKey', {get: () => true});
+        const event = createKeyboardEvent('keydown', key, undefined, {alt: true});
         dispatchEvent(sliderNativeElement, event);
         fixture.detectChanges();
         expect(event.defaultPrevented).toBe(false);
@@ -1078,18 +1136,18 @@ describe('MatSlider', () => {
       testComponent.dir = 'rtl';
       fixture.detectChanges();
 
-      let initialTrackFillStyles = sliderInstance._trackFillStyles;
-      let initialTicksContainerStyles = sliderInstance._ticksContainerStyles;
-      let initialTicksStyles = sliderInstance._ticksStyles;
-      let initialThumbContainerStyles = sliderInstance._thumbContainerStyles;
+      let initialTrackFillStyles = sliderInstance._getTrackFillStyles();
+      let initialTicksContainerStyles = sliderInstance._getTicksContainerStyles();
+      let initialTicksStyles = sliderInstance._getTicksStyles();
+      let initialThumbContainerStyles = sliderInstance._getThumbContainerStyles();
 
       testComponent.dir = 'ltr';
       fixture.detectChanges();
 
-      expect(initialTrackFillStyles).not.toEqual(sliderInstance._trackFillStyles);
-      expect(initialTicksContainerStyles).not.toEqual(sliderInstance._ticksContainerStyles);
-      expect(initialTicksStyles).not.toEqual(sliderInstance._ticksStyles);
-      expect(initialThumbContainerStyles).not.toEqual(sliderInstance._thumbContainerStyles);
+      expect(initialTrackFillStyles).not.toEqual(sliderInstance._getTrackFillStyles());
+      expect(initialTicksContainerStyles).not.toEqual(sliderInstance._getTicksContainerStyles());
+      expect(initialTicksStyles).not.toEqual(sliderInstance._getTicksStyles());
+      expect(initialThumbContainerStyles).not.toEqual(sliderInstance._getThumbContainerStyles());
     });
 
     it('should increment inverted slider by 1 on right arrow pressed', () => {
@@ -1271,11 +1329,12 @@ describe('MatSlider', () => {
       sliderNativeElement = sliderDebugElement.nativeElement;
     });
 
-    it('should update the model on mousedown', () => {
+    it('should update the model on mouseup', () => {
       expect(testComponent.val).toBe(0);
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.76);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.76);
 
       expect(testComponent.val).toBe(76);
     });
@@ -1343,11 +1402,12 @@ describe('MatSlider', () => {
       expect(testComponent.control.value).toBe(0);
     });
 
-    it('should update the control on mousedown', () => {
+    it('should update the control on mouseup', () => {
       expect(testComponent.control.value).toBe(0);
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.76);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.76);
 
       expect(testComponent.control.value).toBe(76);
     });
@@ -1400,6 +1460,7 @@ describe('MatSlider', () => {
       // but remain untouched.
       dispatchMousedownEventSequence(sliderNativeElement, 0.5);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.5);
 
       expect(sliderControl.valid).toBe(true);
       expect(sliderControl.pristine).toBe(false);
@@ -1436,6 +1497,7 @@ describe('MatSlider', () => {
 
       dispatchMousedownEventSequence(sliderNativeElement, 0.1);
       fixture.detectChanges();
+      dispatchSlideEndEvent(sliderNativeElement, 0.1);
 
       expect(testComponent.value).toBe(10);
       expect(testComponent.slider.value).toBe(10);
@@ -1471,12 +1533,13 @@ class StandardSlider { }
 class DisabledSlider { }
 
 @Component({
-  template: `<mat-slider [min]="min" [max]="max" tickInterval="6"></mat-slider>`,
+  template: `<mat-slider [min]="min" [max]="max" [step]="step" tickInterval="6"></mat-slider>`,
   styles: [styles],
 })
 class SliderWithMinAndMax {
   min = 4;
   max = 6;
+  step = 1;
 }
 
 @Component({
@@ -1486,11 +1549,12 @@ class SliderWithMinAndMax {
 class SliderWithValue { }
 
 @Component({
-  template: `<mat-slider [step]="step"></mat-slider>`,
+  template: `<mat-slider [step]="step" [valueText]="valueText"></mat-slider>`,
   styles: [styles],
 })
 class SliderWithStep {
   step = 25;
+  valueText: string;
 }
 
 @Component({

@@ -12,7 +12,7 @@ import {CheckboxHarnessFilters} from '@angular/material/checkbox/testing';
 
 /** Harness for interacting with a MDC-based mat-checkbox in tests. */
 export class MatCheckboxHarness extends ComponentHarness {
-  static hostSelector = 'mat-checkbox';
+  static hostSelector = '.mat-mdc-checkbox';
 
   /**
    * Gets a `HarnessPredicate` that can be used to search for a checkbox with specific attributes.
@@ -102,12 +102,17 @@ export class MatCheckboxHarness extends ComponentHarness {
     return (await this._input()).blur();
   }
 
+  /** Whether the checkbox is focused. */
+  async isFocused(): Promise<boolean> {
+    return (await this._input()).isFocused();
+  }
+
   /**
    * Toggle the checked state of the checkbox and returns a void promise that indicates when the
    * action is complete.
    *
    * Note: This attempts to toggle the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async toggle(): Promise<void> {
@@ -121,7 +126,7 @@ export class MatCheckboxHarness extends ComponentHarness {
    * complete.
    *
    * Note: This attempts to check the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async check(): Promise<void> {
@@ -136,7 +141,7 @@ export class MatCheckboxHarness extends ComponentHarness {
    * complete.
    *
    * Note: This attempts to uncheck the checkbox as a user would, by clicking it. Therefore if you
-   * are using `MAT_CHECKBOX_CLICK_ACTION` to change the behavior on click, calling this method
+   * are using `MAT_CHECKBOX_DEFAULT_OPTIONS` to change the behavior on click, calling this method
    * might not have the expected result.
    */
   async uncheck(): Promise<void> {

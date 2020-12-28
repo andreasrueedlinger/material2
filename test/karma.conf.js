@@ -90,14 +90,14 @@ module.exports = config => {
       startConnect: false,
       recordVideo: false,
       recordScreenshots: false,
-      idleTimeout: 600,
+      idleTimeout: 1000,
       commandTimeout: 600,
       maxDuration: 5400,
     },
 
     browserStack: {
       project: 'Angular Material Unit Tests',
-      startTunnel: false,
+      startTunnel: true,
       retryLimit: 3,
       timeout: 1800,
       video: false,
@@ -106,7 +106,7 @@ module.exports = config => {
     browserDisconnectTolerance: 1,
     browserNoActivityTimeout: 300000,
 
-    browsers: ['ChromeHeadlessLocal'],
+    browsers: ['ChromeLocalDebug'],
     singleRun: false,
 
     // Try Websocket for a faster transmission first. Fallback to polling if necessary.

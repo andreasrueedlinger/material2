@@ -7,9 +7,9 @@
  */
 
 import {BooleanInput, coerceBooleanProperty} from '@angular/cdk/coercion';
-import {Directive, ElementRef, EventEmitter, Inject, Input, OnChanges, Output} from '@angular/core';
 import {hasModifierKey, TAB} from '@angular/cdk/keycodes';
-import {MAT_CHIPS_DEFAULT_OPTIONS, MatChipsDefaultOptions} from './chip-default-options';
+import {Directive, ElementRef, EventEmitter, Inject, Input, OnChanges, Output} from '@angular/core';
+import {MatChipsDefaultOptions, MAT_CHIPS_DEFAULT_OPTIONS} from './chip-default-options';
 import {MatChipGrid} from './chip-grid';
 import {MatChipTextControl} from './chip-text-control';
 
@@ -34,7 +34,10 @@ let nextUniqueId = 0;
   selector: 'input[matChipInputFor]',
   exportAs: 'matChipInput, matChipInputFor',
   host: {
-    'class': 'mat-mdc-chip-input mat-input-element',
+    // TODO: eventually we should remove `mat-input-element` from here since it comes from the
+    // non-MDC version of the input. It's currently being kept for backwards compatibility, because
+    // the MDC chips were landed initially with it.
+    'class': 'mat-mdc-chip-input mat-mdc-input-element mdc-text-field__input mat-input-element',
     '(keydown)': '_keydown($event)',
     '(blur)': '_blur()',
     '(focus)': '_focus()',
@@ -74,7 +77,8 @@ export class MatChipInput implements MatChipTextControl, OnChanges {
    * Defaults to `[ENTER]`.
    */
   @Input('matChipInputSeparatorKeyCodes')
-  separatorKeyCodes: number[] | Set<number> = this._defaultOptions.separatorKeyCodes;
+  separatorKeyCodes: readonly number[] | ReadonlySet<number> =
+      this._defaultOptions.separatorKeyCodes;
 
   /** Emitted when a chip is to be added. */
   @Output('matChipInputTokenEnd')
@@ -163,13 +167,7 @@ export class MatChipInput implements MatChipTextControl, OnChanges {
 
   /** Checks whether a keycode is one of the configured separators. */
   private _isSeparatorKey(event: KeyboardEvent) {
-    if (hasModifierKey(event)) {
-      return false;
-    }
-
-    const separators = this.separatorKeyCodes;
-    const keyCode = event.keyCode;
-    return Array.isArray(separators) ? separators.indexOf(keyCode) > -1 : separators.has(keyCode);
+    return !hasModifierKey(event) && new Set(this.separatorKeyCodes).has(event.keyCode);
   }
 
   static ngAcceptInputType_addOnBlur: BooleanInput;

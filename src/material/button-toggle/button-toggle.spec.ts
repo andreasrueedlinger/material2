@@ -8,7 +8,6 @@ import {
   MatButtonToggle,
   MatButtonToggleChange,
   MatButtonToggleGroup,
-  MatButtonToggleGroupMultiple,
   MatButtonToggleModule,
 } from './index';
 
@@ -271,6 +270,7 @@ describe('MatButtonToggle without forms', () => {
         ButtonToggleWithTabindex,
         ButtonToggleWithStaticName,
         ButtonToggleWithStaticChecked,
+        ButtonToggleWithStaticAriaAttributes,
       ],
     });
 
@@ -647,10 +647,6 @@ describe('MatButtonToggle without forms', () => {
       }).toThrowError(/Value must be an array/);
     });
 
-    it('should be able to query for the deprecated `MatButtonToggleGroupMultiple`', () => {
-      expect(fixture.debugElement.query(By.directive(MatButtonToggleGroupMultiple))).toBeTruthy();
-    });
-
   });
 
   describe('as standalone', () => {
@@ -756,6 +752,16 @@ describe('MatButtonToggle without forms', () => {
       fixture.detectChanges();
       expect(buttonElement.getAttribute('aria-label')).toBe('Super effective');
     });
+
+    it('should clear the static aria from the host node', () => {
+      const fixture = TestBed.createComponent(ButtonToggleWithStaticAriaAttributes);
+      fixture.detectChanges();
+      const hostNode: HTMLElement = fixture.nativeElement.querySelector('mat-button-toggle');
+
+      expect(hostNode.hasAttribute('aria-label')).toBe(false);
+      expect(hostNode.hasAttribute('aria-labelledby')).toBe(false);
+    });
+
   });
 
   describe('with provided aria-labelledby ', () => {
@@ -794,13 +800,13 @@ describe('MatButtonToggle without forms', () => {
       expect(button.getAttribute('tabindex')).toBe('3');
     });
 
-    it('should clear the tabindex from the host element', () => {
+    it('should have role "presentation"', () => {
       const fixture = TestBed.createComponent(ButtonToggleWithTabindex);
       fixture.detectChanges();
 
       const host = fixture.nativeElement.querySelector('.mat-button-toggle');
 
-      expect(host.getAttribute('tabindex')).toBe('-1');
+      expect(host.getAttribute('role')).toBe('presentation');
     });
 
     it('should forward focus to the underlying button when the host is focused', () => {
@@ -1073,3 +1079,11 @@ class ButtonToggleWithStaticChecked {
   @ViewChild(MatButtonToggleGroup) group: MatButtonToggleGroup;
   @ViewChildren(MatButtonToggle) toggles: QueryList<MatButtonToggle>;
 }
+
+
+@Component({
+  template: `
+    <mat-button-toggle aria-label="Toggle me" aria-labelledby="something"></mat-button-toggle>
+  `
+})
+class ButtonToggleWithStaticAriaAttributes {}

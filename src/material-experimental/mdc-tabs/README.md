@@ -58,11 +58,16 @@ component by following these steps:
 
    ```scss
    @import '~@angular/material/theming';
-   @import '~@angular/material-experimental/mdc-tabs';
+   @import '~@angular/material-experimental/mdc-tabs/tabs-theme';
 
    $my-primary: mat-palette($mat-indigo);
    $my-accent:  mat-palette($mat-pink, A200, A100, A400);
-   $my-theme:   mat-light-theme($my-primary, $my-accent);
+   $my-theme:   mat-light-theme((
+     color: (
+       primary: $my-primary, 
+       accent: $my-accent
+     )
+   ));
 
    @include mat-mdc-tabs-theme($my-theme);
    @include mat-mdc-tabs-typography();

@@ -1,5 +1,5 @@
 import * as Octokit from '@octokit/rest';
-import chalk from 'chalk';
+import * as chalk from 'chalk';
 import {existsSync, readFileSync, writeFileSync} from 'fs';
 import {join} from 'path';
 import {BaseReleaseTask} from './base-release-task';
@@ -136,9 +136,9 @@ class StageReleaseTask extends BaseReleaseTask {
     // Note: When updating the commit messages here. Please also update the
     // release publish script to detect the new commit messages.
     if (needsVersionBump) {
-      this.git.createNewCommit(`chore: bump version to ${newVersionName} w/ changelog`);
+      this.git.createNewCommit(`release: bump version to ${newVersionName} w/ changelog`);
     } else {
-      this.git.createNewCommit(`chore: update changelog for ${newVersionName}`);
+      this.git.createNewCommit(`release: update changelog for ${newVersionName}`);
     }
 
     console.info();

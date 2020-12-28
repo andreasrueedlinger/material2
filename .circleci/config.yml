@@ -26,14 +26,6 @@ var_5: &job_defaults
   docker:
     - image: *docker_image
 
-# Job step for checking out the source code from GitHub. This also ensures that the source code
-# is rebased on top of master.
-var_6: &checkout_code
-  checkout:
-    # After checkout, rebase on top of master. By default, PRs are not rebased on top of master,
-    # which we want. See https://discuss.circleci.com/t/1662
-    post: git pull --ff-only origin "refs/pull/${CI_PULL_REQUEST//*pull\//}/merge"
-
 # Restores the cache that could be available for the current Yarn lock file. The cache usually
 # includes the node modules and the Bazel repository cache.
 var_7: &restore_cache
@@ -138,17 +130,55 @@ var_20: &only_on_pull_requests_filter
       only:
         - /pull\/\d+/
 
+# Anchor for a step that notifies Slack when preceding steps failed.
+var_21: &slack_notify_on_failure
+  run:
+    name: "Notifying team about job failure"
+    when: on_fail
+    command: node ./scripts/circleci/notify-slack-job-failure.js
+
 # -----------------------------
 # Container version of CircleCI
 # -----------------------------
-version: 2
+version: 2.1
+
+# Configures CircleCI orbs for this pipeline. Orbs allow consumption of publicly shared
+# CircleCI commands, jobs, configuration elements or executors. Read more about orbs here:
+# https://circleci.com/docs/2.0/orb-intro/
+orbs:
+  # Set up the `queue` orb that allows us to queue up builds across jobs. We use it
+  # to make sure that snapshot builds are not deployed out of order, resulting in Git
+  # push conflicts.
+  queue: eddiewebb/queue@1.5.0
+
+
+commands:
+  checkout_and_rebase:
+    description: Checkout and rebase the repository
+    steps:
+      - checkout
+      - run:
+          name: Set up environment
+          environment:
+              CIRCLE_GIT_BASE_REVISION: << pipeline.git.base_revision >>
+              CIRCLE_GIT_REVISION: << pipeline.git.revision >>
+          command: ./.circleci/env.sh
+      - run:
+          name: Rebase PR on target branch
+          # After checkout, rebase on top of target branch.
+          command: |
+            if [ -n "$CIRCLE_PR_NUMBER" ]; then
+              # User is required for rebase.
+              git config user.name "angular-ci"
+              git config user.email "angular-ci"
+              node .circleci/rebase-pr.js
+            fi
 
 # -----------------------------------------------------------------------------------------
 # Job definitions. Jobs which are defined just here, will not run automatically. Each job
 # must be part of a workflow definition in order to run for PRs and push builds.
 # -----------------------------------------------------------------------------------------
 jobs:
-
   # -----------------------------------
   # Job to test that everything builds with Bazel
   # -----------------------------------
@@ -158,7 +188,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
@@ -168,6 +198,29 @@ jobs:
       # Exclude release and docs packages here as those will be built within
       # the "build_release_packages" and "publish_snapshots" jobs.
       - run: bazel build src/... --build_tag_filters=-docs-package,-release-package
+      - *slack_notify_on_failure
+
+  # -----------------------------------
+  # Job which ensures that all non-test Bazel targets build properly
+  # in View Engine configuration.
+  # -----------------------------------
+  view_engine_build:
+    <<: *job_defaults
+    resource_class: xlarge
+    environment:
+      GCP_DECRYPT_TOKEN: *gcp_decrypt_token
+    steps:
+      - checkout_and_rebase
+      - *restore_cache
+      - *setup_bazel_ci_config
+      - *setup_bazel_remote_execution
+      - *yarn_install
+      - *setup_bazel_binary
+
+      # Exclude release and docs packages here as those will be built within
+      # the "build_release_packages" and "publish_snapshots" jobs.
+      - run: bazel build src/... --build_tag_filters=-docs-package,-release-package --config=view-engine
+      - *slack_notify_on_failure
 
   # --------------------------------------------------------------------------------------------
   # Job that runs ts-api-guardian against our API goldens in "tools/public_api_guard".
@@ -179,7 +232,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-    - *checkout_code
+    - checkout_and_rebase
     - *restore_cache
     - *setup_bazel_ci_config
     - *setup_bazel_remote_execution
@@ -187,6 +240,7 @@ jobs:
     - *setup_bazel_binary
 
     - run: bazel test tools/public_api_guard/...
+    - *slack_notify_on_failure
 
   # -----------------------------------------------------------------
   # Job that runs the e2e tests with Protractor and Chromium headless
@@ -197,14 +251,18 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
       - *yarn_install
       - *setup_bazel_binary
 
-      - run: bazel test src/... --build_tag_filters=e2e --test_tag_filters=e2e --build_tests_only
+      # Run e2e tests. Note that protractor test targets are flaky sometimes, so we run them
+      # with flaky test attempts. This means that Bazel will re-run a failed e2e test target
+      # a second time to ensure it's a real test failure. This improves CI stability.
+      - run: yarn e2e --flaky_test_attempts=2
+      - *slack_notify_on_failure
 
   # ------------------------------------------------------------------------------------------
   # Job that runs the unit tests on locally installed browsers (Chrome and Firefox headless).
@@ -216,7 +274,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
@@ -224,6 +282,7 @@ jobs:
       - *setup_bazel_binary
 
       - run: bazel test src/... --build_tag_filters=-e2e --test_tag_filters=-e2e --build_tests_only
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs the unit tests on Browserstack. The browsers that will be used
@@ -236,12 +295,13 @@ jobs:
       BROWSER_STACK_USERNAME: "angularteam1"
       BROWSER_STACK_ACCESS_KEY: "CaXMeMHD9pr5PHg8N7Jq"
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *yarn_install
 
       - run: ./scripts/circleci/run-browserstack-tests.sh
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs the unit tests on Saucelabs. The browsers that will be used
@@ -257,20 +317,24 @@ jobs:
       # a rate limit exception.
       KARMA_PARALLEL_BROWSERS: 2
     steps:
-    - *checkout_code
+    - checkout_and_rebase
     - *restore_cache
     - *setup_bazel_ci_config
     - *yarn_install
 
     - run: ./scripts/circleci/run-saucelabs-tests.sh
+    - *slack_notify_on_failure
 
   # ----------------------------------
   # Lint job.
   # ----------------------------------
   lint:
     <<: *job_defaults
+    environment:
+      CI_GIT_BASE_REVISION: << pipeline.git.base_revision >>
+      CI_GIT_REVISION: << pipeline.git.revision >>
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *yarn_install
@@ -288,12 +352,23 @@ jobs:
             bazel build //:entry_points_manifest
             yarn check-entry-point-setup $(bazel info bazel-bin)/entry_points_manifest.json
 
-      - run: ./scripts/circleci/lint-bazel-files.sh
+      - run: yarn ng-dev format changed --check << pipeline.git.base_revision >>
+      - run:
+          name: Check Commit Message (PR Only)
+          # Only run the commit message checks on pull requests since we can't do
+          # much about any failures that have made it into the main branch.
+          command: |
+            if [ -n "$CIRCLE_PR_NUMBER" ]; then
+              yarn ng-dev commit-message validate-range --range $CI_COMMIT_RANGE
+            fi
       - run: yarn ownerslint
+      - run: yarn check-mdc-tests
       - run: yarn stylelint
       - run: yarn tslint
       - run: yarn -s ts-circular-deps:check
+      - run: yarn check-mdc-exports
 
+      - *slack_notify_on_failure
       - *save_cache
 
   # -------------------------------------------------------------------------------------------
@@ -306,7 +381,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
@@ -314,7 +389,12 @@ jobs:
       - *setup_bazel_binary
 
       - run: yarn build
-      - run: yarn check-release-output
+      - run:
+          name: Checking release output
+          command: |
+            pkg_json_version=$(node -pe "require('./package.json').version")
+            expected_version="${pkg_json_version}-sha-$(git rev-parse --short HEAD)"
+            yarn check-release-output ${expected_version}
 
       # TODO(devversion): replace this with bazel tests that run Madge. This is
       # cumbersome and doesn't guarantee no circular deps for other entry-points.
@@ -348,11 +428,12 @@ jobs:
       - store_artifacts:
           path: /tmp/cdk-umd-minified-bundles
           destination: /angular_material/cdk_release_output/
+      - *slack_notify_on_failure
 
   upload_release_packages:
     <<: *job_defaults
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *attach_release_output
       - *yarn_install
@@ -373,7 +454,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *attach_release_output
       - *setup_bazel_ci_config
@@ -389,9 +470,20 @@ jobs:
       # The components examples package is not a release package, but we publish it
       # as part of this job to the docs-content repository. It's not contained in the
       # attached release output, so we need to build it here.
-      - run: bazel build src/components-examples:npm_package --config=release
+      - run: yarn build-docs-content
+
+      # Ensures that we do not push the snapshot artifacts upstream until all previous
+      # snapshot build jobs have completed. This helps avoiding conflicts when multiple
+      # commits have been pushed (resulting in multiple concurrent snapshot publish jobs).
+      # We increase the confidence threshold so that it queries the CircleCI API a second time
+      # after a delay. We do this as the CircleCI API does not refresh immediately when a job
+      # completes/starts, and this will improve stability of the queue step. See source:
+      # https://github.com/eddiewebb/circleci-queue/commit/5d42add5bbcff5e8ac7fe189448a61fea98b0839.
+      - queue/until_front_of_line:
+          confidence: "2"
 
       - run: ./scripts/circleci/publish-snapshots.sh
+      - *slack_notify_on_failure
 
   # -----------------------------------------------------------------
   # Job that ensures that the release output is compatible with ngcc.
@@ -400,7 +492,7 @@ jobs:
     <<: *job_defaults
     resource_class: xlarge
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *attach_release_output
       - *yarn_install
@@ -414,6 +506,7 @@ jobs:
       # tsconfig parsing as that causes the release packages to be incorrectly resolved
       # to the sources due to path mapping.
       - run: yarn ngcc --error-on-failed-entry-point --no-tsconfig
+      - *slack_notify_on_failure
 
   # -----------------------------------------------------------------
   # Job that ensures that the release output is compatible with the
@@ -423,7 +516,7 @@ jobs:
     <<: *job_defaults
     resource_class: xlarge
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *attach_release_output
       - *setup_snapshot_builds
@@ -438,6 +531,7 @@ jobs:
       # tsconfig parsing as that causes the release packages to be incorrectly resolved
       # to the sources due to path mapping.
       - run: yarn ngcc --error-on-failed-entry-point --no-tsconfig
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs the local browser tests against the Angular Github snapshots
@@ -449,7 +543,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-    - *checkout_code
+    - checkout_and_rebase
     - *restore_cache
     - *setup_bazel_ci_config
     - *setup_bazel_remote_execution
@@ -458,6 +552,7 @@ jobs:
     - *setup_bazel_binary
 
     - run: bazel test src/... --build_tag_filters=-e2e --test_tag_filters=-e2e --build_tests_only
+    - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs all Bazel tests against View Engine with the current Angular version
@@ -469,7 +564,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
@@ -478,6 +573,7 @@ jobs:
 
       # Run project tests with NGC and View Engine.
       - run: bazel test src/... --build_tag_filters=-docs-package,-e2e --test_tag_filters=-e2e --config=view-engine --build_tests_only
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs all Bazel tests against View Engine from angular/angular#master.
@@ -488,7 +584,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
@@ -498,6 +594,7 @@ jobs:
 
       # Run project tests with NGC and View Engine.
       - run: bazel test src/... --build_tag_filters=-docs-package,-e2e --test_tag_filters=-e2e --config=view-engine --build_tests_only
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs all Bazel integration tests.
@@ -508,14 +605,22 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_ci_config
       - *setup_bazel_remote_execution
       - *yarn_install
       - *setup_bazel_binary
-      # Integration tests run with --config=view-engine because we release with View Engine.
-      - run: bazel test integration/... --build_tests_only --config=view-engine
+      # TODO: Re-enable when there are integration tests that should run with Ivy.
+      # Currently this command fails as there are no tests.
+      # - run: yarn integration-tests
+      - run:
+          name: Running size integration tests (failures are reported in Slack only).
+          command: |
+            # If the size integration tests fail, report the failure to a dedicated #components-ci-size-tracking Slack channel.
+            yarn integration-tests:size-test || node ./scripts/circleci/notify-slack-job-failure.js components-ci-size-tracking
+      - run: yarn integration-tests:view-engine
+      - *slack_notify_on_failure
 
   # ----------------------------------------------------------------------------
   # Job that runs all Bazel tests against material-components-web@canary
@@ -526,7 +631,7 @@ jobs:
     environment:
       GCP_DECRYPT_TOKEN: *gcp_decrypt_token
     steps:
-      - *checkout_code
+      - checkout_and_rebase
       - *restore_cache
       - *setup_bazel_binary
       - *setup_bazel_ci_config
@@ -539,6 +644,7 @@ jobs:
       # Setup the components repository to use the MDC snapshot builds.
       # Run project tests with the MDC canary builds.
       - run: bazel test src/... --build_tag_filters=-docs-package,-e2e --test_tag_filters=-e2e --build_tests_only
+      - *slack_notify_on_failure
 
 # ----------------------------------------------------------------------------------------
 # Workflow definitions. A workflow usually groups multiple jobs together. This is useful if
@@ -553,6 +659,8 @@ workflows:
   default_workflow:
     jobs:
       - bazel_build:
+          filters: *ignore_presubmit_branch_filter
+      - view_engine_build:
           filters: *ignore_presubmit_branch_filter
       - view_engine_test:
           filters: *ignore_presubmit_branch_filter
